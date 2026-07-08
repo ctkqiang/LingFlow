@@ -45,6 +45,12 @@ func (skillPath SkillStoragePath) StorageURI() string {
 	return fmt.Sprintf("s3://%s/%s", skillPath.BucketName, skillPath.ObjectKey())
 }
 
+type SkillsMarkdownBody struct {
+	Instructions string
+	Rules        []string
+	References   []SkillReferenceFile
+}
+
 // SkillDefinition 表示一个完整的技能定义，包含内容体和所有元数据
 type SkillDefinition struct {
 	SkillIdentifier      string               // 稳定唯一标识符，同时也是 S3 前缀，例如 "billing/refund-status"
@@ -52,7 +58,7 @@ type SkillDefinition struct {
 	SkillDescription     string               // 触发文本 -- 用于嵌入和语义搜索的内容
 	SearchKeywords       []string             // 可选，用于混合检索（关键词 + 向量）
 	SkillCategory        string               // 用于两阶段检索和分组
-	MarkdownBody         string               // 完整的 SKILL.md 内容，注入到提示词中
+	MarkdownBody         SkillsMarkdownBody   // 完整的 SKILL.md 内容，注入到提示词中
 	ReferenceFiles       []SkillReferenceFile // 技能可以按需拉取的额外参考文件
 	SchemaVersion        int                  // 编辑时递增；用于使索引缓存失效
 	LastUpdatedTimestamp time.Time            // 最后更新时间
