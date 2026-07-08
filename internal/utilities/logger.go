@@ -15,15 +15,15 @@ const (
 	TZ       = "CST"
 )
 
-// LogLevel controls the minimum severity emitted.
+// LogLevel 控制输出的最低日志级别。
 type LogLevel int
 
 const (
-	DEBUG   LogLevel = iota // verbose diagnostics (local dev only)
-	INFO                    // general operational messages (default)
+	DEBUG   LogLevel = iota // 详细诊断信息（仅限本地开发）
+	INFO                    // 通用运行消息（默认级别）
 	WARN                    // recoverable issues, degraded mode
-	ERROR                   // failures requiring attention
-	VERBOSE                 // per-request metrics, audit trails
+	ERROR                   // 需要关注的故障
+	VERBOSE                 // 逐请求指标，审计追踪
 )
 
 func (l LogLevel) String() string {
@@ -62,9 +62,8 @@ var (
 	goroutineMu   sync.Mutex
 )
 
-// SetLogLevel parses a string level name and sets the global threshold.
-// Defaults to INFO on unrecognised input. Called automatically from
-// init() via the LOG_LEVEL env var.
+// SetLogLevel 解析字符串级别名称并设置全局阈值。
+// 无法识别的输入默认为 INFO。通过 LOG_LEVEL 环境变量在 init() 中自动调用。
 func SetLogLevel(s string) {
 	switch strings.ToUpper(s) {
 	case "DEBUG":
@@ -82,13 +81,13 @@ func SetLogLevel(s string) {
 	}
 }
 
-// RegisterErrorCallback sets a callback invoked on every ERROR log line.
+// RegisterErrorCallback 设置每次 ERROR 日志行触发时调用的回调函数。
 func RegisterErrorCallback(cb func(string)) { errorCallback = cb }
 
 // Bold wraps text with ANSI bold escapes for emphasis inside log lines.
 func Bold(text string) string { return colorBold + text + colorNoBold }
 
-// Error emits an ERROR-level log.  Visible at INFO+.
+// Error 输出 ERROR 级别的日志。在 INFO 及以上级别可见。
 func Error(format string, a ...interface{}) { Log(ERROR, format, a...) }
 
 // Info emits an INFO-level log.

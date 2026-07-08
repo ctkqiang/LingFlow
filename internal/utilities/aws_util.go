@@ -6,17 +6,6 @@ import (
 	"strings"
 )
 
-// DBEnvironment 描述数据库连接应使用的运行时环境类型。
-type DBEnvironment int
-
-const (
-	// DBEnvLocal 表示本地开发环境，强制使用 PostgreSQL，禁止使用任何云数据库服务。
-	DBEnvLocal DBEnvironment = iota
-
-	// DBEnvAWS 表示 AWS 生产环境，使用 Amazon Aurora DSQL。
-	DBEnvAWS
-)
-
 // IsRunInAWS 检查当前进程是否运行在 AWS 环境中，并验证 AWS 凭证的有效性。
 //
 // 判断逻辑（按优先级）：
@@ -145,57 +134,4 @@ func IsLocalMode() bool {
 	onAliyun := os.Getenv("FC_FUNCTION_NAME") != ""
 
 	return !onAWS && !onAliyun
-}
-
-// String 返回 DBEnvironment 的可读名称，用于日志输出。
-func (e DBEnvironment) String() string {
-	switch e {
-	case DBEnvLocal:
-		return "local"
-	case DBEnvAWS:
-		return "aws"
-	default:
-		return "unknown"
-	}
-}
-
-// ResolveDBEnvironment 综合 IsLocalMode 与 IsRunInAWS 的结果，
-// 返回当前进程应使用的数据库环境类型，并在检测到环境冲突时返回错误。
-//
-// 防护规则：
-//   - 本地模式（IsLocalMode=true）下，无论 IS_AWS 如何设置，均强制返回 DBEnvLocal。
-//     若同时检测到 IS_AWS=true，记录警告日志提示配置冲突，但不阻断启动。
-//   - 非本地模式且 IsRunInAWS=true，返回 DBEnvAWS。
-//   - 非本地模式且 IsRunInAWS=false，返回错误：云环境中未提供有效 AWS 凭证。
-//
-// 返回：
-//   - DBEnvironment : 解析出的数据库环境类型
-//   - error         : 云环境中凭证缺失或无效时返回错误
-func ResolveDBEnvironment() (DBEnvironment, error) {
-	local := IsLocalMode()
-
-	if local {
-		if awsEnv("IS_AWS", "false") == "true" {
-			LogWarn(
-				"AWSUtil",
-				"ResolveDBEnvironment",
-				"检测到本地开发模式，但 IS_AWS=true — 忽略 AWS 配置，强制使用 PostgreSQL",
-				0,
-				"env=local",
-				"IS_AWS=true",
-			)
-		}
-		LogProgress("AWSUtil", "ResolveDBEnvironment", "环境=local，将使用 PostgreSQL")
-		return DBEnvLocal, nil
-	}
-
-	if IsRunInAWS() {
-		LogProgress("AWSUtil", "ResolveDBEnvironment", "环境=aws，将使用 Aurora DSQL")
-		return DBEnvAWS, nil
-	}
-
-	return DBEnvLocal, fmt.Errorf(
-		"云运行时已检测到（非本地模式），但 AWS 凭证校验失败：" +
-			"请确认 IS_AWS=true 且 AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY 已正确设置",
-	)
 }

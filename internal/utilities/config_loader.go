@@ -23,16 +23,6 @@ const (
 	secretsManagerTimeout = 10 * time.Second
 )
 
-// requiredKeys 是应用正常运行所必须存在的环境变量列表。
-// LoadConfig 在加载完成后会逐一校验这些键，任意一个缺失都会返回错误。
-var requiredKeys = []string{
-	"DB_HOST",
-	"DB_PORT",
-	"DB_USER",
-	"DB_PASSWORD",
-	"DB_NAME",
-}
-
 // LoadConfig 根据运行时环境选择配置加载策略。
 //
 // 非 AWS 环境：
@@ -44,13 +34,12 @@ var requiredKeys = []string{
 //  3. 回退到 Lambda 系统环境变量（IAM 执行角色注入）
 //
 // 任意一级加载成功后即停止，不继续尝试下一级。
-// 加载完成后统一校验必需键是否存在。
 //
 // 参数：
 //   - ctx : 根上下文，用于 S3 / Secrets Manager API 调用超时控制
 //
 // 返回：
-//   - error : 配置加载失败或必需键缺失时返回包装后的错误，成功时返回 nil
+//   - error : 配置加载失败时返回包装后的错误，成功时返回 nil
 func LoadConfig(ctx context.Context) error {
 	start := time.Now()
 	LogStart(configLoaderComponent, "LoadConfig")
@@ -67,11 +56,6 @@ func LoadConfig(ctx context.Context) error {
 			LogError(configLoaderComponent, "LoadConfig", err, time.Since(start), "step=loadAWSConfig")
 			return fmt.Errorf("AWS 配置加载失败: %w", err)
 		}
-	}
-
-	if err := validateRequiredKeys(); err != nil {
-		LogError(configLoaderComponent, "LoadConfig", err, time.Since(start), "step=validate")
-		return err
 	}
 
 	LogSuccess(configLoaderComponent, "LoadConfig", time.Since(start),
@@ -118,7 +102,6 @@ func loadAWSConfig(ctx context.Context, start time.Time) error {
 
 	// 第三优先级：Lambda 系统环境变量（IAM 执行角色自动注入，无需任何操作）。
 	// 在此阶段不返回错误，因为系统环境变量可能已包含必要的配置。
-	// 最终校验由 validateRequiredKeys 在 LoadConfig 中统一执行。
 	LogProgress(configLoaderComponent, "loadAWSConfig",
 		"使用 Lambda 系统环境变量（IAM 执行角色注入）",
 	)
@@ -344,29 +327,6 @@ func injectSecretToEnv(secretJSON string) error {
 		fmt.Sprintf("injected=%d", injected),
 		fmt.Sprintf("skipped=%d", skipped),
 	)
-	return nil
-}
-
-// validateRequiredKeys 校验所有必需的环境变量键是否存在且非空。
-// 在 LoadConfig 的最后阶段调用，无论配置来源如何都会执行。
-//
-// 校验规则：
-//   - 环境变量必须存在且非空字符串
-//   - 环境变量值不能是占位符（如 "xxxxxxxxxx"、"multiple x" 等）
-//
-// 返回：
-//   - error : 任意必需键缺失或值为无效占位符时返回包含所有无效键名的错误
-func validateRequiredKeys() error {
-	var invalid []string
-	for _, key := range requiredKeys {
-		val := os.Getenv(key)
-		if val == "" || IsInvalidPlaceholder(val) {
-			invalid = append(invalid, key)
-		}
-	}
-	if len(invalid) > 0 {
-		return fmt.Errorf("缺少必需的环境变量或值为无效占位符: %v", invalid)
-	}
 	return nil
 }
 
