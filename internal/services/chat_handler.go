@@ -15,7 +15,7 @@ type ChatHandler struct {
 	registry *SkillRegistry
 }
 
-// NewChatHandler creates a fully wired ChatHandler with all dependencies.
+// NewChatHandler 创建一个完整注入依赖的 ChatHandler 实例。
 func NewChatHandler(registry *SkillRegistry, llmService LLMService) *ChatHandler {
 	return &ChatHandler{
 		executor: NewSkillExecutor(registry, llmService),
@@ -23,20 +23,20 @@ func NewChatHandler(registry *SkillRegistry, llmService LLMService) *ChatHandler
 	}
 }
 
-// NewDefaultChatHandler creates a ChatHandler using environment-based Bedrock config.
-// It initializes the AWS Bedrock client via the default credential chain.
+// NewDefaultChatHandler 使用基于环境变量的 Bedrock 配置创建 ChatHandler。
+// 通过 AWS 默认凭证链初始化 Bedrock 客户端。
 func NewDefaultChatHandler(ctx context.Context) (*ChatHandler, error) {
 	registry := NewSkillRegistry()
 	bedrockConfig := NewBedrockConfig()
 	llmService, err := NewBedrockLLMService(ctx, bedrockConfig)
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize Bedrock LLM service: %w", err)
+		return nil, fmt.Errorf("初始化 Bedrock LLM 服务失败: %w", err)
 	}
 	return NewChatHandler(registry, llmService), nil
 }
 
-// HandleIncomingMessage processes a raw WebSocket message payload.
-// It parses the WSMessage, routes based on type, and returns a response WSMessage.
+// HandleIncomingMessage 处理原始 WebSocket 消息载荷。
+// 解析 WSMessage，根据类型路由，并返回响应 WSMessage。
 func (handler *ChatHandler) HandleIncomingMessage(
 	ctx context.Context,
 	rawPayload []byte,
@@ -44,20 +44,20 @@ func (handler *ChatHandler) HandleIncomingMessage(
 	start := time.Now()
 	utilities.LogStart("ChatHandler", "HandleIncomingMessage")
 
-	// Step 1: Parse the incoming WSMessage
+	// 步骤 1: 解析传入的 WSMessage
 	incomingMessage, err := handler.parseIncomingMessage(rawPayload)
 	if err != nil {
 		errorResponse := handler.buildErrorResponse("parse_error", err.Error())
 		return json.Marshal(errorResponse)
 	}
 
-	// Step 2: Validate the incoming message structure
+	// 步骤 2: 校验传入消息的结构
 	if err := ValidateWSMessage(incomingMessage); err != nil {
 		errorResponse := handler.buildErrorResponse("validation_error", err.Error())
 		return json.Marshal(errorResponse)
 	}
 
-	// Step 3: Route based on message type
+	// 步骤 3: 根据消息类型路由
 	var responseMessage models.WSMessage
 
 	switch incomingMessage.Type {
@@ -66,7 +66,7 @@ func (handler *ChatHandler) HandleIncomingMessage(
 	case models.SystemChat:
 		responseMessage, err = handler.handleSystemChat(incomingMessage)
 	default:
-		err = fmt.Errorf("unsupported message type: %s", incomingMessage.Type)
+		err = fmt.Errorf("不支持的消息类型: %s", incomingMessage.Type)
 	}
 
 	if err != nil {
@@ -75,10 +75,10 @@ func (handler *ChatHandler) HandleIncomingMessage(
 		return json.Marshal(errorResponse)
 	}
 
-	// Step 4: Marshal the response
+	// 步骤 4: 序列化响应
 	responseBytes, err := json.Marshal(responseMessage)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal response message: %w", err)
+		return nil, fmt.Errorf("序列化响应消息失败: %w", err)
 	}
 
 	utilities.LogSuccess("ChatHandler", "HandleIncomingMessage", time.Since(start),
@@ -89,35 +89,35 @@ func (handler *ChatHandler) HandleIncomingMessage(
 	return responseBytes, nil
 }
 
-// handleUserChat processes a user_chat message through the LLM pipeline.
+// handleUserChat 通过 LLM 管道处理 user_chat 类型的消息。
 func (handler *ChatHandler) handleUserChat(
 	ctx context.Context,
 	message models.WSMessage,
 ) (models.WSMessage, error) {
-	// Parse user chat data
+	// 解析用户聊天数据
 	var userData models.UserChatData
 	if err := json.Unmarshal(message.Data, &userData); err != nil {
-		return models.WSMessage{}, fmt.Errorf("failed to parse user chat data: %w", err)
+		return models.WSMessage{}, fmt.Errorf("解析用户聊天数据失败: %w", err)
 	}
 
 	if userData.Message == "" {
-		return models.WSMessage{}, fmt.Errorf("user message content is empty")
+		return models.WSMessage{}, fmt.Errorf("用户消息内容为空")
 	}
 
-	// Execute through the skill pipeline
+	// 通过技能管道执行
 	var result ExecutionResult
 	var err error
 
 	if message.SkillsId != "" {
-		// Explicit skill specified by the client
+		// 客户端显式指定了技能
 		result, err = handler.executor.ExecuteWithSkill(ctx, userData, message.SkillsId)
 	} else {
-		// Auto-detect skill from user message
+		// 从用户消息自动检测技能
 		result, err = handler.executor.Execute(ctx, userData)
 	}
 
 	if err != nil {
-		// Wrap as SkillExecutionError if not already
+		// 若尚未包装为 SkillExecutionError 则进行包装
 		if _, ok := err.(*SkillExecutionError); !ok {
 			err = NewSkillExecutionError(message.SkillsId, "execute", err)
 		}
@@ -127,13 +127,13 @@ func (handler *ChatHandler) handleUserChat(
 	return result.WSMessage, nil
 }
 
-// handleSystemChat processes system_chat messages (pass-through or acknowledgement).
+// handleSystemChat 处理 system_chat 类型的消息（透传或确认应答）。
 func (handler *ChatHandler) handleSystemChat(
 	message models.WSMessage,
 ) (models.WSMessage, error) {
 	var sysData models.SystemChatData
 	if err := json.Unmarshal(message.Data, &sysData); err != nil {
-		return models.WSMessage{}, fmt.Errorf("failed to parse system chat data: %w", err)
+		return models.WSMessage{}, fmt.Errorf("解析系统聊天数据失败: %w", err)
 	}
 
 	ackData := models.SystemChatData{
@@ -143,7 +143,7 @@ func (handler *ChatHandler) handleSystemChat(
 
 	dataBytes, err := json.Marshal(ackData)
 	if err != nil {
-		return models.WSMessage{}, fmt.Errorf("failed to marshal ack data: %w", err)
+		return models.WSMessage{}, fmt.Errorf("序列化确认应答数据失败: %w", err)
 	}
 
 	return models.WSMessage{
@@ -154,16 +154,16 @@ func (handler *ChatHandler) handleSystemChat(
 	}, nil
 }
 
-// parseIncomingMessage deserializes a raw payload into a WSMessage.
+// parseIncomingMessage 将原始载荷反序列化为 WSMessage。
 func (handler *ChatHandler) parseIncomingMessage(rawPayload []byte) (models.WSMessage, error) {
 	var message models.WSMessage
 	if err := json.Unmarshal(rawPayload, &message); err != nil {
-		return models.WSMessage{}, fmt.Errorf("invalid message format: %w", err)
+		return models.WSMessage{}, fmt.Errorf("无效的消息格式: %w", err)
 	}
 	return message, nil
 }
 
-// buildErrorResponse creates a standardized error WSMessage.
+// buildErrorResponse 创建标准化的错误 WSMessage。
 func (handler *ChatHandler) buildErrorResponse(event, errorMessage string) models.WSMessage {
 	errData := models.SystemChatData{
 		Event:   event,
@@ -179,12 +179,12 @@ func (handler *ChatHandler) buildErrorResponse(event, errorMessage string) model
 	}
 }
 
-// GetRegistry returns the underlying skill registry for external registration.
+// GetRegistry 返回底层的技能注册中心，供外部注册使用。
 func (handler *ChatHandler) GetRegistry() *SkillRegistry {
 	return handler.registry
 }
 
-// GetExecutor returns the underlying skill executor.
+// GetExecutor 返回底层的技能执行器。
 func (handler *ChatHandler) GetExecutor() *SkillExecutor {
 	return handler.executor
 }

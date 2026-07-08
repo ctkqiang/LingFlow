@@ -13,8 +13,8 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// MessageHandler defines the interface for processing incoming WebSocket messages.
-// Implementations receive raw message bytes and return response bytes.
+// MessageHandler 定义处理传入 WebSocket 消息的接口。
+// 实现方接收原始消息字节并返回响应字节。
 type MessageHandler interface {
 	HandleIncomingMessage(ctx context.Context, rawPayload []byte) ([]byte, error)
 }
@@ -117,8 +117,8 @@ func (connectionManager *WebsokcetConnectionManager) BroadcastMessage(messagePay
 	defer connectionManager.mu.Unlock()
 
 	recipientCount := len(connectionManager.connections)
-	failedCount := 0
 	for connectionIdentifier, websocketConnection := range connectionManager.connections {
+		failedCount := 0
 		if sendError := websocketConnection.WriteMessage(websocket.TextMessage, messagePayload); sendError != nil {
 			failedCount++
 			utilities.Error(
@@ -130,19 +130,20 @@ func (connectionManager *WebsokcetConnectionManager) BroadcastMessage(messagePay
 
 			delete(connectionManager.connections, connectionIdentifier)
 		}
-	}
 
-	connectionManager.recordEvent(
-		context.Background(),
-		"",
-		events.EventTypeChatMessageBroadcasted,
-		events.ChatBroadcastEventData{
-			RecipientCount:   recipientCount,
-			PayloadSizeBytes: len(messagePayload),
-			FailedCount:      failedCount,
-		},
-		map[string]string{"component": "connections"},
-	)
+		connectionManager.recordEvent(
+			context.Background(),
+			connectionIdentifier,
+			events.EventTypeChatMessageBroadcasted,
+			events.ChatBroadcastEventData{
+				ConnectionIdentifier: connectionIdentifier,
+				RecipientCount:       recipientCount,
+				PayloadSizeBytes:     len(messagePayload),
+				FailedCount:          failedCount,
+			},
+			map[string]string{"component": "connections"},
+		)
+	}
 }
 
 // WebsocketHandler 将默认 /chat/{uuid} 处理器注册到 http.DefaultServeMux。

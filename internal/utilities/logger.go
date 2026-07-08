@@ -90,17 +90,17 @@ func Bold(text string) string { return colorBold + text + colorNoBold }
 // Error 输出 ERROR 级别的日志。在 INFO 及以上级别可见。
 func Error(format string, a ...interface{}) { Log(ERROR, format, a...) }
 
-// Info emits an INFO-level log.
+// Info 输出 INFO 级别的日志。
 func Info(format string, a ...interface{}) { Log(INFO, format, a...) }
 
-// Debug emits a DEBUG-level log.  Only visible when LOG_LEVEL=DEBUG.
+// Debug 输出 DEBUG 级别的日志。仅在 LOG_LEVEL=DEBUG 时可见。
 func Debug(format string, a ...interface{}) { Log(DEBUG, format, a...) }
 
 // Warn emits a WARN-level log.  Only visible at WARN+.
 func Warn(format string, a ...interface{}) { Log(WARN, format, a...) }
 
-// Log is the simple single-line logger.  Prefer Logf for structured
-// operation logs; use Log for ad-hoc messages.
+// Log 是简单的单行日志记录器。结构化操作日志优先使用 Logf；
+// 临时消息使用 Log。
 func Log(level LogLevel, format string, a ...interface{}) {
 	if level < CurrentLevel {
 		return
@@ -119,9 +119,8 @@ func Log(level LogLevel, format string, a ...interface{}) {
 	}
 }
 
-// Logf emits a structured block log entry with standard fields (Status,
-// Type, Memory, Routine, Elapsed) followed by caller-supplied key=value
-// details.  This is the primary log function for operations.
+// Logf 输出带有标准字段（Status、Type、Memory、Routine、Elapsed）的结构化块日志，
+// 后跟调用方提供的 key=value 详情。这是操作日志的主要函数。
 func Logf(component, operation string, level LogLevel, status string, elapsed time.Duration, details ...string) {
 	if level < CurrentLevel {
 		return
@@ -157,8 +156,8 @@ func Logf(component, operation string, level LogLevel, status string, elapsed ti
 	}
 }
 
-// LogProgress emits an INFO-level IN_PROGRESS log for intermediate
-// checkpoints (startup phases, long-running steps, etc.).
+// LogProgress 输出 INFO 级别的 IN_PROGRESS 日志，用于中间检查点
+// （启动阶段、长时间运行步骤等）。
 func LogProgress(component, operation, msg string, details ...string) {
 	resolved := msg
 	if strings.Contains(msg, "%") && len(details) > 0 {
@@ -181,7 +180,7 @@ func LogStart(component, operation string) {
 	Logf(component, operation, INFO, "START", 0)
 }
 
-// LogSuccess emits an OK marker with elapsed time.
+// LogSuccess 输出带有耗时的 OK 标记。
 func LogSuccess(component, operation string, elapsed time.Duration, details ...string) {
 	Logf(component, operation, INFO, "OK", elapsed, details...)
 }
@@ -198,8 +197,8 @@ func LogWarn(component, operation, msg string, elapsed time.Duration, details ..
 	Logf(component, operation, WARN, "WARN", elapsed, all...)
 }
 
-// Mask redacts a sensitive value, showing the first few characters
-// followed by [REDACTED].  Useful for tokens, keys, and PII in logs.
+// Mask 脱敏敏感值，显示前几个字符后跟 [REDACTED]。
+// 适用于日志中的令牌、密钥和个人身份信息。
 func Mask(s string) string {
 	runes := []rune(s)
 	if len(runes) <= 4 {

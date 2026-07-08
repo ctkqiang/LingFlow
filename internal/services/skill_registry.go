@@ -25,7 +25,7 @@ type SkillRegistry struct {
 	maxResults      int
 }
 
-// NewSkillRegistry creates a new skill registry with default configuration.
+// NewSkillRegistry 使用默认配置创建一个新的技能注册中心。
 func NewSkillRegistry() *SkillRegistry {
 	return &SkillRegistry{
 		skills:         make(map[string]models.SkillDefinition),
@@ -35,17 +35,17 @@ func NewSkillRegistry() *SkillRegistry {
 	}
 }
 
-// RegisterSkill adds or updates a skill in the registry.
+// RegisterSkill 在注册中心中添加或更新一个技能。
 func (registry *SkillRegistry) RegisterSkill(skill models.SkillDefinition) error {
 	start := time.Now()
 	utilities.LogStart("SkillRegistry", "RegisterSkill")
 
 	if skill.SkillIdentifier == "" {
-		return fmt.Errorf("skill identifier is required")
+		return fmt.Errorf("技能标识符为必填项")
 	}
 
 	if skill.SkillDisplayName == "" {
-		return fmt.Errorf("skill display name is required for skill %q", skill.SkillIdentifier)
+		return fmt.Errorf("技能 %q 的显示名称为必填项", skill.SkillIdentifier)
 	}
 
 	registry.mu.Lock()
@@ -61,7 +61,7 @@ func (registry *SkillRegistry) RegisterSkill(skill models.SkillDefinition) error
 	return nil
 }
 
-// UnregisterSkill removes a skill from the registry.
+// UnregisterSkill 从注册中心移除一个技能。
 func (registry *SkillRegistry) UnregisterSkill(skillIdentifier string) bool {
 	registry.mu.Lock()
 	defer registry.mu.Unlock()
@@ -75,7 +75,7 @@ func (registry *SkillRegistry) UnregisterSkill(skillIdentifier string) bool {
 	return true
 }
 
-// GetSkill retrieves a skill by its identifier.
+// GetSkill 根据标识符检索一个技能。
 func (registry *SkillRegistry) GetSkill(skillIdentifier string) (models.SkillDefinition, bool) {
 	registry.mu.RLock()
 	defer registry.mu.RUnlock()
@@ -84,7 +84,7 @@ func (registry *SkillRegistry) GetSkill(skillIdentifier string) (models.SkillDef
 	return skill, exists
 }
 
-// ListSkills returns metadata for all registered skills.
+// ListSkills 返回所有已注册技能的元数据。
 func (registry *SkillRegistry) ListSkills() []models.SkillMetadata {
 	registry.mu.RLock()
 	defer registry.mu.RUnlock()
@@ -94,9 +94,8 @@ func (registry *SkillRegistry) ListSkills() []models.SkillMetadata {
 	return result
 }
 
-// RetrieveSkills performs keyword-based retrieval to find skills
-// relevant to the given user query. Returns scored results sorted
-// by relevance (highest first).
+// RetrieveSkills 执行基于关键词的检索，查找与用户查询相关的技能。
+// 返回按相关性评分排序的结果（最高分在前）。
 func (registry *SkillRegistry) RetrieveSkills(userQuery string) []models.RetrievalResult {
 	start := time.Now()
 	utilities.LogStart("SkillRegistry", "RetrieveSkills")
@@ -136,8 +135,8 @@ func (registry *SkillRegistry) RetrieveSkills(userQuery string) []models.Retriev
 	return results
 }
 
-// RetrieveBestSkill returns the single most relevant skill for the query,
-// or nil if no skill meets the score threshold.
+// RetrieveBestSkill 返回与查询最相关的单个技能，
+// 若没有技能达到评分阈值则返回 nil。
 func (registry *SkillRegistry) RetrieveBestSkill(userQuery string) *models.SkillDefinition {
 	results := registry.RetrieveSkills(userQuery)
 	if len(results) == 0 {
@@ -152,15 +151,15 @@ func (registry *SkillRegistry) RetrieveBestSkill(userQuery string) *models.Skill
 	return &skill
 }
 
-// SkillCount returns the number of registered skills.
+// SkillCount 返回已注册技能的数量。
 func (registry *SkillRegistry) SkillCount() int {
 	registry.mu.RLock()
 	defer registry.mu.RUnlock()
 	return len(registry.skills)
 }
 
-// rebuildMetadataIndexLocked rebuilds the metadata index from current skills.
-// Caller must hold the write lock.
+// rebuildMetadataIndexLocked 从当前技能重建元数据索引。
+// 调用方必须持有写锁。
 func (registry *SkillRegistry) rebuildMetadataIndexLocked() {
 	registry.metadataIndex = make([]models.SkillMetadata, 0, len(registry.skills))
 	for _, skill := range registry.skills {
@@ -175,8 +174,7 @@ func (registry *SkillRegistry) rebuildMetadataIndexLocked() {
 	}
 }
 
-// computeRelevanceScore calculates a TF-based relevance score between
-// query tokens and a skill's searchable text fields.
+// computeRelevanceScore 计算查询词元与技能可搜索文本字段之间基于 TF 的相关性评分。
 func computeRelevanceScore(queryTokens []string, meta models.SkillMetadata) float32 {
 	searchableText := strings.ToLower(strings.Join([]string{
 		meta.SkillDisplayName,
@@ -223,7 +221,7 @@ func computeRelevanceScore(queryTokens []string, meta models.SkillMetadata) floa
 	return float32(coverage*0.6 + normalizedWeight*0.4)
 }
 
-// tokenize splits text into lowercase tokens, filtering out short tokens and punctuation.
+// tokenize 将文本拆分为小写词元，过滤掉短词元和标点符号。
 func tokenize(text string) []string {
 	words := strings.FieldsFunc(strings.ToLower(text), func(r rune) bool {
 		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
@@ -238,8 +236,8 @@ func tokenize(text string) []string {
 	return tokens
 }
 
-// sortRetrievalResults sorts results by score descending using insertion sort
-// (efficient for small slices typical in skill retrieval).
+// sortRetrievalResults 使用插入排序按评分降序排列结果
+// （对技能检索中常见的小切片非常高效）。
 func sortRetrievalResults(results []models.RetrievalResult) {
 	for i := 1; i < len(results); i++ {
 		key := results[i]
@@ -252,7 +250,7 @@ func sortRetrievalResults(results []models.RetrievalResult) {
 	}
 }
 
-// truncate shortens a string to maxLen characters, appending "..." if truncated.
+// truncate 将字符串截断为 maxLen 个字符，截断时追加 "..."。
 func truncate(s string, maxLen int) string {
 	runes := []rune(s)
 	if len(runes) <= maxLen {

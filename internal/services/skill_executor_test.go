@@ -579,7 +579,7 @@ func TestFormatSkillAsContext(t *testing.T) {
 	}
 }
 
-// --- End-to-End Pipeline Test ---
+// --- 端到端管道测试 ---
 
 func TestEndToEnd_SkillSelectionThroughResponseDelivery(t *testing.T) {
 	// Step 1: Set up registry with multiple skills
@@ -604,7 +604,7 @@ func TestEndToEnd_SkillSelectionThroughResponseDelivery(t *testing.T) {
 		}
 	}
 
-	// Step 2: Create mock LLM that verifies skill context injection
+	// 步骤 2: 创建验证技能上下文注入的模拟 LLM
 	var capturedRequest LLMRequest
 	mock := &mockLLMService{
 		generateFunc: func(ctx context.Context, request LLMRequest) (LLMResponse, error) {
@@ -619,7 +619,7 @@ func TestEndToEnd_SkillSelectionThroughResponseDelivery(t *testing.T) {
 		},
 	}
 
-	// Step 3: Create handler and process message
+	// 步骤 3: 创建处理器并处理消息
 	handler := NewChatHandler(registry, mock)
 
 	userData := models.UserChatData{
@@ -668,7 +668,7 @@ func TestEndToEnd_SkillSelectionThroughResponseDelivery(t *testing.T) {
 		t.Fatalf("E2E: expected skills_id 'billing/refund', got %q", response.SkillsId)
 	}
 
-	// Step 6: Validate response message content
+	// 步骤 6: 校验响应消息内容
 	var sysData models.SystemChatData
 	if err := json.Unmarshal(response.Data, &sysData); err != nil {
 		t.Fatalf("E2E: failed to unmarshal system data: %v", err)
@@ -682,7 +682,7 @@ func TestEndToEnd_SkillSelectionThroughResponseDelivery(t *testing.T) {
 		t.Fatalf("E2E: unexpected response message: %q", sysData.Message)
 	}
 
-	// Step 7: Validate the response passes WSMessage validation
+	// 步骤 7: 验证响应通过 WSMessage 校验
 	if err := ValidateWSMessage(response); err != nil {
 		t.Fatalf("E2E: response failed validation: %v", err)
 	}
