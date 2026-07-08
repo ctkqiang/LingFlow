@@ -315,3 +315,10 @@ func buildBlock(header, color string, rows [][]string) string {
 	}
 	return sb.String()
 }
+
+func GetEnv(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
