@@ -17,6 +17,47 @@ type ChatSessionProjection struct {
 	LastEventAt           time.Time `json:"last_event_at"`
 }
 
+// NewChatSessionProjection 创建一个初始的 chat session 投影。
+func NewChatSessionProjection(aggregateID string) *ChatSessionProjection {
+	return &ChatSessionProjection{
+		ConnectionIdentifier: aggregateID,
+	}
+}
+
+// ApplyEvent 将单个事件增量应用到投影状态。
+func (projection *ChatSessionProjection) ApplyEvent(domainEvent DomainEvent) error {
+	if domainEvent.OccurredAt.After(projection.LastEventAt) {
+		projection.LastEventAt = domainEvent.OccurredAt
+	}
+
+	switch domainEvent.EventType {
+	case EventTypeChatSessionConnected:
+		eventData, decodeError := decodeChatSessionEventData(domainEvent)
+		if decodeError != nil {
+			return decodeError
+		}
+		projection.ConnectionIdentifier = eventData.ConnectionIdentifier
+		projection.Connected = true
+	case EventTypeChatSessionDisconnected:
+		eventData, decodeError := decodeChatSessionEventData(domainEvent)
+		if decodeError != nil {
+			return decodeError
+		}
+		projection.ConnectionIdentifier = eventData.ConnectionIdentifier
+		projection.Connected = false
+	case EventTypeChatMessageReceived:
+		projection.ReceivedMessageCount++
+	case EventTypeChatMessageProcessed:
+		projection.ProcessedMessageCount++
+	case EventTypeChatMessageProcessingFailed:
+		projection.FailedMessageCount++
+	case EventTypeChatMessageBroadcasted:
+		projection.BroadcastMessageCount++
+	}
+
+	return nil
+}
+
 // RebuildChatSessionProjection 从事件历史重建 chat session 状态。
 func RebuildChatSessionProjection(eventHistory []DomainEvent) (ChatSessionProjection, error) {
 	var projection ChatSessionProjection

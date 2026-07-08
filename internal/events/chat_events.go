@@ -23,6 +23,23 @@ type ChatBroadcastEventData struct {
 	FailedCount          int    `json:"failed_count"`
 }
 
+// SkillExecutionEventData 表示技能执行事件的数据。
+type SkillExecutionEventData struct {
+	SkillIdentifier string  `json:"skill_identifier"`
+	UserQuery       string  `json:"user_query"`
+	MatchScore      float32 `json:"match_score,omitempty"`
+	ErrorMessage    string  `json:"error_message,omitempty"`
+}
+
+// LLMGenerationEventData 表示 LLM 生成事件的数据。
+type LLMGenerationEventData struct {
+	SkillIdentifier string        `json:"skill_identifier,omitempty"`
+	TokensUsed      int           `json:"tokens_used"`
+	LatencyMs       int64         `json:"latency_ms"`
+	FinishReason    string        `json:"finish_reason"`
+	ErrorMessage    string        `json:"error_message,omitempty"`
+}
+
 // ChatStreamID 返回 chat aggregate 对应的事件流标识。
 func ChatStreamID(connectionIdentifier string) string {
 	return "chat:" + connectionIdentifier
