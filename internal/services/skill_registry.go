@@ -18,7 +18,7 @@ const (
 
 // SkillRegistry 管理所有可用技能的内存索引，并提供技能选择的检索能力。
 type SkillRegistry struct {
-	mu              sync.RWMutex
+	registryMutex   sync.RWMutex
 	skills          map[string]models.SkillDefinition
 	metadataIndex   []models.SkillMetadata
 	scoreThreshold  float32
@@ -48,8 +48,8 @@ func (registry *SkillRegistry) RegisterSkill(skill models.SkillDefinition) error
 		return fmt.Errorf("技能 %q 的显示名称为必填项", skill.SkillIdentifier)
 	}
 
-	registry.mu.Lock()
-	defer registry.mu.Unlock()
+	registry.registryMutex.Lock()
+	defer registry.registryMutex.Unlock()
 
 	registry.skills[skill.SkillIdentifier] = skill
 	registry.rebuildMetadataIndexLocked()
@@ -63,8 +63,8 @@ func (registry *SkillRegistry) RegisterSkill(skill models.SkillDefinition) error
 
 // UnregisterSkill 从注册中心移除一个技能。
 func (registry *SkillRegistry) UnregisterSkill(skillIdentifier string) bool {
-	registry.mu.Lock()
-	defer registry.mu.Unlock()
+	registry.registryMutex.Lock()
+	defer registry.registryMutex.Unlock()
 
 	if _, exists := registry.skills[skillIdentifier]; !exists {
 		return false
@@ -77,8 +77,8 @@ func (registry *SkillRegistry) UnregisterSkill(skillIdentifier string) bool {
 
 // GetSkill 根据标识符检索一个技能。
 func (registry *SkillRegistry) GetSkill(skillIdentifier string) (models.SkillDefinition, bool) {
-	registry.mu.RLock()
-	defer registry.mu.RUnlock()
+	registry.registryMutex.RLock()
+	defer registry.registryMutex.RUnlock()
 
 	skill, exists := registry.skills[skillIdentifier]
 	return skill, exists
@@ -86,8 +86,8 @@ func (registry *SkillRegistry) GetSkill(skillIdentifier string) (models.SkillDef
 
 // ListSkills 返回所有已注册技能的元数据。
 func (registry *SkillRegistry) ListSkills() []models.SkillMetadata {
-	registry.mu.RLock()
-	defer registry.mu.RUnlock()
+	registry.registryMutex.RLock()
+	defer registry.registryMutex.RUnlock()
 
 	result := make([]models.SkillMetadata, len(registry.metadataIndex))
 	copy(result, registry.metadataIndex)
@@ -100,8 +100,8 @@ func (registry *SkillRegistry) RetrieveSkills(userQuery string) []models.Retriev
 	start := time.Now()
 	utilities.LogStart("SkillRegistry", "RetrieveSkills")
 
-	registry.mu.RLock()
-	defer registry.mu.RUnlock()
+	registry.registryMutex.RLock()
+	defer registry.registryMutex.RUnlock()
 
 	queryTokens := tokenize(userQuery)
 	if len(queryTokens) == 0 {
@@ -153,8 +153,8 @@ func (registry *SkillRegistry) RetrieveBestSkill(userQuery string) *models.Skill
 
 // SkillCount 返回已注册技能的数量。
 func (registry *SkillRegistry) SkillCount() int {
-	registry.mu.RLock()
-	defer registry.mu.RUnlock()
+	registry.registryMutex.RLock()
+	defer registry.registryMutex.RUnlock()
 	return len(registry.skills)
 }
 
@@ -197,14 +197,14 @@ func computeRelevanceScore(queryTokens []string, meta models.SkillMetadata) floa
 	totalWeight := float64(0)
 
 	for _, queryToken := range queryTokens {
-		if freq, found := tokenFrequency[queryToken]; found {
+		if frequency, found := tokenFrequency[queryToken]; found {
 			matchedTokens++
-			totalWeight += 1.0 + math.Log(float64(freq))
+			totalWeight += 1.0 + math.Log(float64(frequency))
 		} else {
-			for searchToken, freq := range tokenFrequency {
+			for searchToken, frequency := range tokenFrequency {
 				if strings.Contains(searchToken, queryToken) || strings.Contains(queryToken, searchToken) {
 					matchedTokens++
-					totalWeight += 0.5 * (1.0 + math.Log(float64(freq)))
+					totalWeight += 0.5 * (1.0 + math.Log(float64(frequency)))
 					break
 				}
 			}
@@ -239,22 +239,22 @@ func tokenize(text string) []string {
 // sortRetrievalResults 使用插入排序按评分降序排列结果
 // （对技能检索中常见的小切片非常高效）。
 func sortRetrievalResults(results []models.RetrievalResult) {
-	for i := 1; i < len(results); i++ {
-		key := results[i]
-		j := i - 1
-		for j >= 0 && results[j].Score < key.Score {
-			results[j+1] = results[j]
-			j--
+	for outerIndex := 1; outerIndex < len(results); outerIndex++ {
+		currentElement := results[outerIndex]
+		innerIndex := outerIndex - 1
+		for innerIndex >= 0 && results[innerIndex].Score < currentElement.Score {
+			results[innerIndex+1] = results[innerIndex]
+			innerIndex--
 		}
-		results[j+1] = key
+		results[innerIndex+1] = currentElement
 	}
 }
 
 // truncate 将字符串截断为 maxLen 个字符，截断时追加 "..."。
-func truncate(s string, maxLen int) string {
-	runes := []rune(s)
+func truncate(inputString string, maxLen int) string {
+	runes := []rune(inputString)
 	if len(runes) <= maxLen {
-		return s
+		return inputString
 	}
 	return string(runes[:maxLen]) + "..."
 }

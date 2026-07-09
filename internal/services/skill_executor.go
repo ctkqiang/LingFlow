@@ -21,12 +21,12 @@ type SkillExecutionError struct {
 	Timestamp time.Time
 }
 
-func (e *SkillExecutionError) Error() string {
-	return fmt.Sprintf("skill execution failed [skill=%s phase=%s]: %v", e.SkillID, e.Phase, e.Cause)
+func (executionError *SkillExecutionError) Error() string {
+	return fmt.Sprintf("skill execution failed [skill=%s phase=%s]: %v", executionError.SkillID, executionError.Phase, executionError.Cause)
 }
 
-func (e *SkillExecutionError) Unwrap() error {
-	return e.Cause
+func (executionError *SkillExecutionError) Unwrap() error {
+	return executionError.Cause
 }
 
 // NewSkillExecutionError 创建一个新的 SkillExecutionError 实例。
@@ -144,7 +144,7 @@ func (executor *SkillExecutor) ExecuteWithSkill(
 		return ExecutionResult{}, NewSkillExecutionError(skillID, "formatting", err)
 	}
 
-	meta := models.SkillMetadata{
+	skillMetadata := models.SkillMetadata{
 		SkillIdentifier:  skill.SkillIdentifier,
 		SkillDisplayName: skill.SkillDisplayName,
 		SkillDescription: skill.SkillDescription,
@@ -160,7 +160,7 @@ func (executor *SkillExecutor) ExecuteWithSkill(
 
 	return ExecutionResult{
 		Response:  llmResponse,
-		SkillUsed: &meta,
+		SkillUsed: &skillMetadata,
 		WSMessage: wsMessage,
 	}, nil
 }
@@ -177,7 +177,7 @@ func (executor *SkillExecutor) retrieveSkill(userQuery string) (*models.SkillDef
 		return nil, nil, nil
 	}
 
-	meta := &models.SkillMetadata{
+	skillMetadata := &models.SkillMetadata{
 		SkillIdentifier:  skill.SkillIdentifier,
 		SkillDisplayName: skill.SkillDisplayName,
 		SkillDescription: skill.SkillDescription,
@@ -190,7 +190,7 @@ func (executor *SkillExecutor) retrieveSkill(userQuery string) (*models.SkillDef
 		fmt.Sprintf("已选择技能: %s (%s)", skill.SkillDisplayName, skill.SkillIdentifier),
 	)
 
-	return skill, meta, nil
+	return skill, skillMetadata, nil
 }
 
 // buildLLMRequest 构建带有可选技能上下文的 LLM 请求。

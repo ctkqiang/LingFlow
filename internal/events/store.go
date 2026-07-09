@@ -19,9 +19,9 @@ type EventStore interface {
 // 当前项目没有数据库依赖，因此先使用内存存储承载 event sourcing 结构。
 // 之后如果需要持久化，可以在不改 handler 逻辑的情况下替换 EventStore 实现。
 type InMemoryEventStore struct {
-	mu      sync.RWMutex
-	streams map[string][]DomainEvent
-	events  []DomainEvent
+	storeMutex sync.RWMutex
+	streams    map[string][]DomainEvent
+	events     []DomainEvent
 }
 
 // NewInMemoryEventStore 创建一个进程内事件存储。
@@ -54,8 +54,8 @@ func (store *InMemoryEventStore) Append(
 		event.EventID = newEventIdentifier()
 	}
 
-	store.mu.Lock()
-	defer store.mu.Unlock()
+	store.storeMutex.Lock()
+	defer store.storeMutex.Unlock()
 
 	event.Version = int64(len(store.streams[event.StreamID]) + 1)
 	store.streams[event.StreamID] = append(store.streams[event.StreamID], event)
@@ -73,8 +73,8 @@ func (store *InMemoryEventStore) LoadStream(
 		return nil, ctxErr
 	}
 
-	store.mu.RLock()
-	defer store.mu.RUnlock()
+	store.storeMutex.RLock()
+	defer store.storeMutex.RUnlock()
 
 	streamEvents := store.streams[streamID]
 	result := make([]DomainEvent, len(streamEvents))
@@ -88,8 +88,8 @@ func (store *InMemoryEventStore) LoadAll(ctx context.Context) ([]DomainEvent, er
 		return nil, ctxErr
 	}
 
-	store.mu.RLock()
-	defer store.mu.RUnlock()
+	store.storeMutex.RLock()
+	defer store.storeMutex.RUnlock()
 
 	result := make([]DomainEvent, len(store.events))
 	copy(result, store.events)

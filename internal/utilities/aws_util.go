@@ -74,22 +74,22 @@ func isInvalidAWSCredential(v string) bool {
 		return true
 	}
 
-	lower := strings.ToLower(v)
+	lowercaseValue := strings.ToLower(v)
 	for _, prefix := range []string{"multiple ", "muleiplte "} {
-		if strings.HasPrefix(lower, prefix) {
+		if strings.HasPrefix(lowercaseValue, prefix) {
 			return true
 		}
 	}
 
 	if len(v) >= 3 {
-		allSame := true
-		for i := 1; i < len(v); i++ {
-			if v[i] != v[0] {
-				allSame = false
+		allCharactersIdentical := true
+		for charIndex := 1; charIndex < len(v); charIndex++ {
+			if v[charIndex] != v[0] {
+				allCharactersIdentical = false
 				break
 			}
 		}
-		if allSame {
+		if allCharactersIdentical {
 			return true
 		}
 	}

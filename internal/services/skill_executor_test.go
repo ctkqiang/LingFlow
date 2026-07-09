@@ -14,9 +14,9 @@ type mockLLMService struct {
 	generateFunc func(ctx context.Context, request LLMRequest) (LLMResponse, error)
 }
 
-func (m *mockLLMService) Generate(ctx context.Context, request LLMRequest) (LLMResponse, error) {
-	if m.generateFunc != nil {
-		return m.generateFunc(ctx, request)
+func (mockService *mockLLMService) Generate(ctx context.Context, request LLMRequest) (LLMResponse, error) {
+	if mockService.generateFunc != nil {
+		return mockService.generateFunc(ctx, request)
 	}
 	return LLMResponse{
 		Content:      "模拟响应: " + request.UserMessage,
@@ -27,7 +27,7 @@ func (m *mockLLMService) Generate(ctx context.Context, request LLMRequest) (LLMR
 	}, nil
 }
 
-func (m *mockLLMService) HealthCheck(ctx context.Context) error {
+func (mockService *mockLLMService) HealthCheck(ctx context.Context) error {
 	return nil
 }
 
@@ -102,11 +102,11 @@ func TestSkillRegistry_RegisterValidation(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := registry.RegisterSkill(tt.skill)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("RegisterSkill() 错误 = %v, 期望错误 %v", err, tt.wantErr)
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			err := registry.RegisterSkill(testCase.skill)
+			if (err != nil) != testCase.wantErr {
+				t.Errorf("RegisterSkill() 错误 = %v, 期望错误 %v", err, testCase.wantErr)
 			}
 		})
 	}
@@ -152,8 +152,8 @@ func TestSkillRegistry_RetrieveSkills(t *testing.T) {
 		),
 	}
 
-	for _, s := range skills {
-		if err := registry.RegisterSkill(s); err != nil {
+	for _, skillDefinition := range skills {
+		if err := registry.RegisterSkill(skillDefinition); err != nil {
 			t.Fatalf("注册技能失败: %v", err)
 		}
 	}
@@ -557,21 +557,21 @@ func TestFormatSkillAsContext(t *testing.T) {
 		"test", nil,
 	)
 
-	context := FormatSkillAsContext(skill)
+	skillContext := FormatSkillAsContext(skill)
 
-	if context == "" {
+	if skillContext == "" {
 		t.Fatal("期望上下文字符串非空")
 	}
 
-	if !containsSubstring(context, "Format Test") {
+	if !containsSubstring(skillContext, "Format Test") {
 		t.Fatal("期望上下文包含技能显示名称")
 	}
 
-	if !containsSubstring(context, "Format Test 技能的使用说明") {
+	if !containsSubstring(skillContext, "Format Test 技能的使用说明") {
 		t.Fatal("期望上下文包含使用说明")
 	}
 
-	if !containsSubstring(context, "规则 1") {
+	if !containsSubstring(skillContext, "规则 1") {
 		t.Fatal("期望上下文包含规则")
 	}
 }
@@ -594,8 +594,8 @@ func TestEndToEnd_SkillSelectionThroughResponseDelivery(t *testing.T) {
 		),
 	}
 
-	for _, s := range skills {
-		if err := registry.RegisterSkill(s); err != nil {
+	for _, skillDefinition := range skills {
+		if err := registry.RegisterSkill(skillDefinition); err != nil {
 			t.Fatalf("注册技能失败: %v", err)
 		}
 	}

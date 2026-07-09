@@ -64,18 +64,18 @@ func NewBedrockConfig() BedrockConfig {
 	}
 
 	maxTokens := 2048
-	if v := utilities.GetEnv("BEDROCK_MAX_TOKENS", ""); v != "" {
-		fmt.Sscanf(v, "%d", &maxTokens)
+	if envValue := utilities.GetEnv("BEDROCK_MAX_TOKENS", ""); envValue != "" {
+		fmt.Sscanf(envValue, "%d", &maxTokens)
 	}
 
 	var temperature float32 = 0.7
-	if v := utilities.GetEnv("BEDROCK_TEMPERATURE", ""); v != "" {
-		fmt.Sscanf(v, "%f", &temperature)
+	if envValue := utilities.GetEnv("BEDROCK_TEMPERATURE", ""); envValue != "" {
+		fmt.Sscanf(envValue, "%f", &temperature)
 	}
 
 	var topP float32 = 0.9
-	if v := utilities.GetEnv("BEDROCK_TOP_P", ""); v != "" {
-		fmt.Sscanf(v, "%f", &topP)
+	if envValue := utilities.GetEnv("BEDROCK_TOP_P", ""); envValue != "" {
+		fmt.Sscanf(envValue, "%f", &topP)
 	}
 
 	return BedrockConfig{
@@ -207,7 +207,7 @@ func (service *BedrockLLMService) buildConverseInput(
 ) *bedrockruntime.ConverseInput {
 	maxTokens := int32(service.config.MaxTokens)
 
-	input := &bedrockruntime.ConverseInput{
+	converseInput := &bedrockruntime.ConverseInput{
 		ModelId: &service.config.ModelID,
 		Messages: []bedrocktypes.Message{
 			{
@@ -228,14 +228,14 @@ func (service *BedrockLLMService) buildConverseInput(
 
 	// 通过 System 字段注入系统提示词
 	if systemPrompt != "" {
-		input.System = []bedrocktypes.SystemContentBlock{
+		converseInput.System = []bedrocktypes.SystemContentBlock{
 			&bedrocktypes.SystemContentBlockMemberText{
 				Value: systemPrompt,
 			},
 		}
 	}
 
-	return input
+	return converseInput
 }
 
 // extractConverseTextContent 从 Converse API 响应中提取文本内容。
@@ -275,40 +275,40 @@ func safeTokenCount(usage *bedrocktypes.TokenUsage, isInput bool) int32 {
 }
 
 // derefInt32 安全地解引用 *int32 指针，若为 nil 则返回 0。
-func derefInt32(p *int32) int32 {
-	if p == nil {
+func derefInt32(pointer *int32) int32 {
+	if pointer == nil {
 		return 0
 	}
-	return *p
+	return *pointer
 }
 
 // buildSkillAugmentedPrompt 将技能上下文注入到系统提示词中。
 func buildSkillAugmentedPrompt(basePrompt, skillContext string) string {
-	var sb strings.Builder
-	sb.WriteString(basePrompt)
-	sb.WriteString("\n\n")
-	sb.WriteString("--- SKILL CONTEXT ---\n")
-	sb.WriteString(skillContext)
-	sb.WriteString("\n--- END SKILL CONTEXT ---")
-	return sb.String()
+	var promptBuilder strings.Builder
+	promptBuilder.WriteString(basePrompt)
+	promptBuilder.WriteString("\n\n")
+	promptBuilder.WriteString("--- SKILL CONTEXT ---\n")
+	promptBuilder.WriteString(skillContext)
+	promptBuilder.WriteString("\n--- END SKILL CONTEXT ---")
+	return promptBuilder.String()
 }
 
 // FormatSkillAsContext 将 SkillDefinition 转换为可注入提示词的上下文字符串。
 func FormatSkillAsContext(skill models.SkillDefinition) string {
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Skill: %s\n", skill.SkillDisplayName))
-	sb.WriteString(fmt.Sprintf("Description: %s\n", skill.SkillDescription))
+	var contextBuilder strings.Builder
+	contextBuilder.WriteString(fmt.Sprintf("Skill: %s\n", skill.SkillDisplayName))
+	contextBuilder.WriteString(fmt.Sprintf("Description: %s\n", skill.SkillDescription))
 
 	if skill.MarkdownBody.Instructions != "" {
-		sb.WriteString(fmt.Sprintf("\nInstructions:\n%s\n", skill.MarkdownBody.Instructions))
+		contextBuilder.WriteString(fmt.Sprintf("\nInstructions:\n%s\n", skill.MarkdownBody.Instructions))
 	}
 
 	if len(skill.MarkdownBody.Rules) > 0 {
-		sb.WriteString("\nRules:\n")
-		for i, rule := range skill.MarkdownBody.Rules {
-			sb.WriteString(fmt.Sprintf("  %d. %s\n", i+1, rule))
+		contextBuilder.WriteString("\nRules:\n")
+		for ruleIndex, rule := range skill.MarkdownBody.Rules {
+			contextBuilder.WriteString(fmt.Sprintf("  %d. %s\n", ruleIndex+1, rule))
 		}
 	}
 
-	return sb.String()
+	return contextBuilder.String()
 }

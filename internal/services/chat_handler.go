@@ -134,12 +134,12 @@ func (handler *ChatHandler) handleSystemChat(
 		return models.WSMessage{}, fmt.Errorf("解析系统聊天数据失败: %w", err)
 	}
 
-	ackData := models.SystemChatData{
+	acknowledgementData := models.SystemChatData{
 		Event:   "system_ack",
 		Message: fmt.Sprintf("已确认系统事件: %s", sysData.Event),
 	}
 
-	dataBytes, err := json.Marshal(ackData)
+	dataBytes, err := json.Marshal(acknowledgementData)
 	if err != nil {
 		return models.WSMessage{}, fmt.Errorf("序列化确认应答数据失败: %w", err)
 	}
@@ -167,14 +167,14 @@ func (handler *ChatHandler) handleHeartbeat(
 	}
 
 	latency := time.Since(heartbeatData.Timestamp).Milliseconds()
-	pongData := models.HeartbeatChatData{
+	pongResponseData := models.HeartbeatChatData{
 		Action:    "pong",
 		Nonce:     heartbeatData.Nonce,
 		Timestamp: time.Now(),
 		Latency:   latency,
 	}
 
-	dataBytes, err := json.Marshal(pongData)
+	dataBytes, err := json.Marshal(pongResponseData)
 	if err != nil {
 		return models.WSMessage{}, fmt.Errorf("序列化 pong 数据失败: %w", err)
 	}
@@ -197,12 +197,12 @@ func (handler *ChatHandler) parseIncomingMessage(rawPayload []byte) (models.WSMe
 
 // buildErrorResponse 创建标准化的错误 WSMessage。
 func (handler *ChatHandler) buildErrorResponse(event, errorMessage string) models.WSMessage {
-	errData := models.SystemChatData{
+	errorData := models.SystemChatData{
 		Event:   event,
 		Message: errorMessage,
 	}
 
-	dataBytes, _ := json.Marshal(errData)
+	dataBytes, _ := json.Marshal(errorData)
 
 	return models.WSMessage{
 		Type:      models.SystemChat,

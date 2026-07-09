@@ -59,7 +59,7 @@ var (
 	startTime     = time.Now()
 	errorCallback func(string)
 	goroutineSeq  int
-	goroutineMu   sync.Mutex
+	goroutineMutex sync.Mutex
 )
 
 // SetLogLevel 解析字符串级别名称并设置全局阈值。
@@ -82,7 +82,7 @@ func SetLogLevel(s string) {
 }
 
 // RegisterErrorCallback 设置每次 ERROR 日志行触发时调用的回调函数。
-func RegisterErrorCallback(cb func(string)) { errorCallback = cb }
+func RegisterErrorCallback(callback func(string)) { errorCallback = callback }
 
 // Bold 使用 ANSI 粗体转义序列包裹文本，用于日志行中的强调。
 func Bold(text string) string { return colorBold + text + colorNoBold }
@@ -105,17 +105,17 @@ func Log(level LogLevel, format string, a ...interface{}) {
 	if level < CurrentLevel {
 		return
 	}
-	msg := fmt.Sprintf(format, a...)
-	line := fmt.Sprintf("[%s] [%s] [%s] %s",
-		APP_NAME, time.Now().Format("2006-01-02 15:04:05"), level.String(), msg)
-	c := levelColor(level)
-	if c != "" {
-		fmt.Fprintf(os.Stderr, "%s%s%s\n", c, line, colorReset)
+	formattedMessage := fmt.Sprintf(format, a...)
+	logLine := fmt.Sprintf("[%s] [%s] [%s] %s",
+		APP_NAME, time.Now().Format("2006-01-02 15:04:05"), level.String(), formattedMessage)
+	logColor := levelColor(level)
+	if logColor != "" {
+		fmt.Fprintf(os.Stderr, "%s%s%s\n", logColor, logLine, colorReset)
 	} else {
-		fmt.Fprintln(os.Stderr, line)
+		fmt.Fprintln(os.Stderr, logLine)
 	}
 	if level == ERROR && errorCallback != nil {
-		errorCallback(line)
+		errorCallback(logLine)
 	}
 }
 
@@ -125,31 +125,31 @@ func Logf(component, operation string, level LogLevel, status string, elapsed ti
 	if level < CurrentLevel {
 		return
 	}
-	id := nextTaskID()
-	funcName := callerName(3)
-	heapMB := heapAllocMB()
+	taskIdentifier := nextTaskID()
+	callerFunctionName := callerName(3)
+	heapAllocationMegabytes := heapAllocMB()
 
 	header := fmt.Sprintf("[%s@%s]::%s:: (%s:%s>>%s::%s)",
-		APP_NAME, nowCompact(), level.String(), component, operation, id, funcName)
+		APP_NAME, nowCompact(), level.String(), component, operation, taskIdentifier, callerFunctionName)
 
-	rows := [][]string{
+	logRows := [][]string{
 		{"Status", status},
 		{"Type", "ACTION"},
-		{"Memory", fmt.Sprintf("%.2fMB", heapMB)},
-		{"Routine", id},
+		{"Memory", fmt.Sprintf("%.2fMB", heapAllocationMegabytes)},
+		{"Routine", taskIdentifier},
 		{"Elapsed", fmtElapsed(elapsed)},
 	}
-	for _, d := range details {
-		k, v, ok := strings.Cut(d, "=")
+	for _, detail := range details {
+		detailKey, detailValue, ok := strings.Cut(detail, "=")
 		if ok {
-			rows = append(rows, []string{strings.TrimSpace(k), strings.TrimSpace(v)})
+			logRows = append(logRows, []string{strings.TrimSpace(detailKey), strings.TrimSpace(detailValue)})
 		} else {
-			rows = append(rows, []string{d, ""})
+			logRows = append(logRows, []string{detail, ""})
 		}
 	}
 
-	c := levelColor(level)
-	fmt.Fprint(os.Stderr, buildBlock(header, c, rows))
+	logColor := levelColor(level)
+	fmt.Fprint(os.Stderr, buildBlock(header, logColor, logRows))
 
 	if level == ERROR && errorCallback != nil {
 		errorCallback(header + " " + status)
@@ -204,33 +204,33 @@ func Mask(s string) string {
 	if len(runes) <= 4 {
 		return "****"
 	}
-	n := 10
-	if len(runes) <= n {
-		n = len(runes) / 3
+	visibleCharacterCount := 10
+	if len(runes) <= visibleCharacterCount {
+		visibleCharacterCount = len(runes) / 3
 	}
-	return string(runes[:n]) + "[REDACTED]"
+	return string(runes[:visibleCharacterCount]) + "[REDACTED]"
 }
 
 // RetryWithBackoff 以固定退避间隔执行操作，最多重试 maxAttempts 次。
 // 耗尽重试次数后返回最后一个错误。
 func RetryWithBackoff(name string, maxAttempts int, backoff time.Duration, fn func() error) error {
-	var last error
-	for i := 0; i < maxAttempts; i++ {
+	var lastError error
+	for attemptIndex := 0; attemptIndex < maxAttempts; attemptIndex++ {
 		if err := fn(); err == nil {
 			return nil
 		} else {
-			last = err
-			Warn("%s attempt %d/%d failed: %v — retrying in %v", name, i+1, maxAttempts, err, backoff)
+			lastError = err
+			Warn("%s attempt %d/%d failed: %v — retrying in %v", name, attemptIndex+1, maxAttempts, err, backoff)
 			time.Sleep(backoff)
 		}
 	}
-	return fmt.Errorf("%s: exhausted %d retries: %w", name, maxAttempts, last)
+	return fmt.Errorf("%s: exhausted %d retries: %w", name, maxAttempts, lastError)
 }
 
 func init() { SetLogLevel(os.Getenv("LOG_LEVEL")) }
 
-func levelColor(l LogLevel) string {
-	switch l {
+func levelColor(logLevel LogLevel) string {
+	switch logLevel {
 	case DEBUG:
 		return colorYellow
 	case INFO:
@@ -247,17 +247,17 @@ func levelColor(l LogLevel) string {
 }
 
 func nowCompact() string {
-	t := time.Now()
+	currentTime := time.Now()
 	return fmt.Sprintf("%d%02d%02d:%02d:%02d:%02d%s",
-		t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), TZ)
+		currentTime.Year(), currentTime.Month(), currentTime.Day(), currentTime.Hour(), currentTime.Minute(), currentTime.Second(), TZ)
 }
 
 func nextTaskID() string {
-	goroutineMu.Lock()
-	id := goroutineSeq
+	goroutineMutex.Lock()
+	sequenceIdentifier := goroutineSeq
 	goroutineSeq++
-	goroutineMu.Unlock()
-	return fmt.Sprintf("TASK-%03d", id)
+	goroutineMutex.Unlock()
+	return fmt.Sprintf("TASK-%03d", sequenceIdentifier)
 }
 
 func callerName(depth int) string {
@@ -265,31 +265,31 @@ func callerName(depth int) string {
 	if !ok {
 		return "Unknown"
 	}
-	name := runtime.FuncForPC(pc).Name()
-	if i := strings.LastIndexByte(name, '.'); i >= 0 {
-		return name[i+1:]
+	functionName := runtime.FuncForPC(pc).Name()
+	if separatorIndex := strings.LastIndexByte(functionName, '.'); separatorIndex >= 0 {
+		return functionName[separatorIndex+1:]
 	}
-	return name
+	return functionName
 }
 
 func heapAllocMB() float64 {
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
-	return float64(m.Alloc) / 1024 / 1024
+	var memoryStats runtime.MemStats
+	runtime.ReadMemStats(&memoryStats)
+	return float64(memoryStats.Alloc) / 1024 / 1024
 }
 
-func fmtElapsed(d time.Duration) string {
+func fmtElapsed(duration time.Duration) string {
 	switch {
-	case d == 0:
+	case duration == 0:
 		return "0μs"
-	case d < time.Microsecond:
-		return fmt.Sprintf("%.2fμs", float64(d.Nanoseconds())/1000.0)
-	case d < time.Millisecond:
-		return fmt.Sprintf("%.2fμs", float64(d.Microseconds()))
-	case d < time.Second:
-		return fmt.Sprintf("%.2fms", float64(d.Milliseconds()))
+	case duration < time.Microsecond:
+		return fmt.Sprintf("%.2fμs", float64(duration.Nanoseconds())/1000.0)
+	case duration < time.Millisecond:
+		return fmt.Sprintf("%.2fμs", float64(duration.Microseconds()))
+	case duration < time.Second:
+		return fmt.Sprintf("%.2fms", float64(duration.Milliseconds()))
 	default:
-		return fmt.Sprintf("%.2fs", d.Seconds())
+		return fmt.Sprintf("%.2fs", duration.Seconds())
 	}
 }
 
@@ -315,8 +315,8 @@ func buildBlock(header, color string, rows [][]string) string {
 }
 
 func GetEnv(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
+	if envValue := os.Getenv(key); envValue != "" {
+		return envValue
 	}
 	return fallback
 }

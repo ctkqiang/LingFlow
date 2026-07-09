@@ -21,7 +21,7 @@ type EventBus interface {
 // 发布时先以读锁获取处理器快照，再释放锁后逐个调用处理器，
 // 避免处理器内部再次调用 Publish 时产生死锁。
 type InMemoryEventBus struct {
-	mu       sync.RWMutex
+	busMutex sync.RWMutex
 	handlers map[EventType][]EventHandler
 }
 
@@ -34,8 +34,8 @@ func NewInMemoryEventBus() *InMemoryEventBus {
 
 // Subscribe 将处理器注册到指定事件类型。
 func (bus *InMemoryEventBus) Subscribe(eventType EventType, handler EventHandler) {
-	bus.mu.Lock()
-	defer bus.mu.Unlock()
+	bus.busMutex.Lock()
+	defer bus.busMutex.Unlock()
 	bus.handlers[eventType] = append(bus.handlers[eventType], handler)
 }
 
@@ -50,11 +50,11 @@ func (bus *InMemoryEventBus) Publish(ctx context.Context, events ...DomainEvent)
 			return ctx.Err()
 		}
 
-		bus.mu.RLock()
+		bus.busMutex.RLock()
 		handlers := bus.handlers[event.EventType]
 		snapshot := make([]EventHandler, len(handlers))
 		copy(snapshot, handlers)
-		bus.mu.RUnlock()
+		bus.busMutex.RUnlock()
 
 		for _, handler := range snapshot {
 			if err := handler(ctx, event); err != nil {

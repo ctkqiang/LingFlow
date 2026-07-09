@@ -31,18 +31,18 @@ const WebSocketChatEndpointPathPrefix = "/chat/"
 type AWSWebSokcetGateway struct{}
 
 type connectionState struct {
-	conn           *websocket.Conn
-	lastActiveAt   time.Time
+	conn            *websocket.Conn
+	lastActiveAt    time.Time
 	heartbeatTicker *time.Ticker
-	pingNonce      string
-	pingSentAt     time.Time
-	mu             sync.Mutex
+	pingNonce       string
+	pingSentAt      time.Time
+	connectionMutex sync.Mutex
 }
 
 type WebsokcetConnectionManager struct {
-	connections      map[string]*connectionState
-	eventStore       events.EventStore
-	mu               sync.Mutex
+	connections       map[string]*connectionState
+	eventStore        events.EventStore
+	managerMutex      sync.Mutex
 	heartbeatInterval time.Duration
 	heartbeatTimeout  time.Duration
 	writeTimeout      time.Duration
@@ -52,7 +52,7 @@ type WebsokcetConnectionManager struct {
 
 func NewWebsocketGatewayConnectionManager() *WebsokcetConnectionManager {
 	return &WebsokcetConnectionManager{
-		connections:      make(map[string]*connectionState),
+		connections:       make(map[string]*connectionState),
 		heartbeatInterval: defaultHeartbeatInterval,
 		heartbeatTimeout:  defaultHeartbeatTimeout,
 		writeTimeout:      defaultHeartbeatWriteTimeout,
@@ -85,13 +85,13 @@ func NewEventSourcedWebsocketGatewayConnectionManager(
 
 	ctx, cancel := context.WithCancel(context.Background())
 	manager := &WebsokcetConnectionManager{
-		connections:      make(map[string]*connectionState),
-		eventStore:       eventStore,
+		connections:       make(map[string]*connectionState),
+		eventStore:        eventStore,
 		heartbeatInterval: interval,
 		heartbeatTimeout:  timeout,
 		writeTimeout:      writeTimeout,
-		ctx:              ctx,
-		cancel:           cancel,
+		ctx:               ctx,
+		cancel:            cancel,
 	}
 
 	go manager.startHeartbeatMonitor()
@@ -111,8 +111,8 @@ func (connectionManager *WebsokcetConnectionManager) AddConnection(
 	connectionIdentifier string,
 	websocketConnection *websocket.Conn,
 ) {
-	connectionManager.mu.Lock()
-	defer connectionManager.mu.Unlock()
+	connectionManager.managerMutex.Lock()
+	defer connectionManager.managerMutex.Unlock()
 
 	state := &connectionState{
 		conn:         websocketConnection,
@@ -141,8 +141,8 @@ func (connectionManager *WebsokcetConnectionManager) AddConnection(
 }
 
 func (connectionManager *WebsokcetConnectionManager) RemoveConnection(connectionIdentifier string) {
-	connectionManager.mu.Lock()
-	defer connectionManager.mu.Unlock()
+	connectionManager.managerMutex.Lock()
+	defer connectionManager.managerMutex.Unlock()
 
 	state, exists := connectionManager.connections[connectionIdentifier]
 	if !exists {
@@ -172,8 +172,8 @@ func (connectionManager *WebsokcetConnectionManager) RemoveConnection(connection
 }
 
 func (connectionManager *WebsokcetConnectionManager) BroadcastMessage(messagePayload []byte) {
-	connectionManager.mu.Lock()
-	defer connectionManager.mu.Unlock()
+	connectionManager.managerMutex.Lock()
+	defer connectionManager.managerMutex.Unlock()
 
 	recipientCount := len(connectionManager.connections)
 	for connectionIdentifier, state := range connectionManager.connections {
@@ -208,9 +208,9 @@ func (connectionManager *WebsokcetConnectionManager) SendMessageToConnection(
 	connectionIdentifier string,
 	messagePayload []byte,
 ) error {
-	connectionManager.mu.Lock()
+	connectionManager.managerMutex.Lock()
 	state, exists := connectionManager.connections[connectionIdentifier]
-	connectionManager.mu.Unlock()
+	connectionManager.managerMutex.Unlock()
 
 	if !exists {
 		return fmt.Errorf("连接不存在: %s", connectionIdentifier)
@@ -225,13 +225,13 @@ func (connectionManager *WebsokcetConnectionManager) sendMessageToConnection(con
 }
 
 func (connectionManager *WebsokcetConnectionManager) UpdateLastActive(connectionIdentifier string) {
-	connectionManager.mu.Lock()
-	defer connectionManager.mu.Unlock()
+	connectionManager.managerMutex.Lock()
+	defer connectionManager.managerMutex.Unlock()
 
 	if state, exists := connectionManager.connections[connectionIdentifier]; exists {
-		state.mu.Lock()
+		state.connectionMutex.Lock()
 		state.lastActiveAt = time.Now()
-		state.mu.Unlock()
+		state.connectionMutex.Unlock()
 	}
 }
 
@@ -244,8 +244,8 @@ func (connectionManager *WebsokcetConnectionManager) handlePing(connectionIdenti
 		events.EventTypeHeartbeatPingReceived,
 		events.HeartbeatEventData{
 			ConnectionIdentifier: connectionIdentifier,
-			Nonce:               nonce,
-			Action:              "ping",
+			Nonce:                nonce,
+			Action:               "ping",
 		},
 		map[string]string{"component": "connections"},
 	)
@@ -268,9 +268,9 @@ func (connectionManager *WebsokcetConnectionManager) handlePing(connectionIdenti
 		events.EventTypeHeartbeatPongSent,
 		events.HeartbeatEventData{
 			ConnectionIdentifier: connectionIdentifier,
-			Nonce:               nonce,
-			LatencyMs:           latency,
-			Action:              "pong",
+			Nonce:                nonce,
+			LatencyMs:            latency,
+			Action:               "pong",
 		},
 		map[string]string{"component": "connections"},
 	)
@@ -291,15 +291,15 @@ func (connectionManager *WebsokcetConnectionManager) handlePong(connectionIdenti
 		events.EventTypeHeartbeatPongReceived,
 		events.HeartbeatEventData{
 			ConnectionIdentifier: connectionIdentifier,
-			Nonce:               nonce,
-			Action:              "pong",
+			Nonce:                nonce,
+			Action:               "pong",
 		},
 		map[string]string{"component": "connections"},
 	)
 
-	connectionManager.mu.Lock()
+	connectionManager.managerMutex.Lock()
 	state, exists := connectionManager.connections[connectionIdentifier]
-	connectionManager.mu.Unlock()
+	connectionManager.managerMutex.Unlock()
 
 	if exists && state.pingNonce == nonce {
 		latency := time.Since(state.pingSentAt).Milliseconds()
@@ -308,22 +308,22 @@ func (connectionManager *WebsokcetConnectionManager) handlePong(connectionIdenti
 			"Ping/Pong",
 			fmt.Sprintf("收到 pong [%s], nonce=%s, latency=%dms", connectionIdentifier, nonce, latency),
 		)
-		state.mu.Lock()
+		state.connectionMutex.Lock()
 		state.pingNonce = ""
-		state.mu.Unlock()
+		state.connectionMutex.Unlock()
 	}
 }
 
 func (connectionManager *WebsokcetConnectionManager) sendPing(connectionIdentifier string) {
-	connectionManager.mu.Lock()
+	connectionManager.managerMutex.Lock()
 	state, exists := connectionManager.connections[connectionIdentifier]
 	if !exists {
-		connectionManager.mu.Unlock()
+		connectionManager.managerMutex.Unlock()
 		return
 	}
 
 	if state.pingNonce != "" {
-		connectionManager.mu.Unlock()
+		connectionManager.managerMutex.Unlock()
 		return
 	}
 
@@ -331,8 +331,8 @@ func (connectionManager *WebsokcetConnectionManager) sendPing(connectionIdentifi
 	state.pingNonce = nonce
 	state.pingSentAt = time.Now()
 	state.lastActiveAt = time.Now()
-	conn := state.conn
-	connectionManager.mu.Unlock()
+	websocketConnection := state.conn
+	connectionManager.managerMutex.Unlock()
 
 	pingMessage, err := buildHeartbeatPing(nonce)
 	if err != nil {
@@ -340,7 +340,7 @@ func (connectionManager *WebsokcetConnectionManager) sendPing(connectionIdentifi
 		return
 	}
 
-	if err := connectionManager.sendMessageToConnection(conn, pingMessage); err != nil {
+	if err := connectionManager.sendMessageToConnection(websocketConnection, pingMessage); err != nil {
 		utilities.Error("发送 ping 失败 [%s]: %v", connectionIdentifier, err)
 		return
 	}
@@ -351,8 +351,8 @@ func (connectionManager *WebsokcetConnectionManager) sendPing(connectionIdentifi
 		events.EventTypeHeartbeatPingSent,
 		events.HeartbeatEventData{
 			ConnectionIdentifier: connectionIdentifier,
-			Nonce:               nonce,
-			Action:              "ping",
+			Nonce:                nonce,
+			Action:               "ping",
 		},
 		map[string]string{"component": "connections"},
 	)
@@ -371,9 +371,9 @@ func (connectionManager *WebsokcetConnectionManager) startConnectionHeartbeat(co
 	for {
 		select {
 		case <-state.heartbeatTicker.C:
-			connectionManager.mu.Lock()
+			connectionManager.managerMutex.Lock()
 			_, exists := connectionManager.connections[connectionIdentifier]
-			connectionManager.mu.Unlock()
+			connectionManager.managerMutex.Unlock()
 
 			if !exists {
 				return
@@ -383,14 +383,14 @@ func (connectionManager *WebsokcetConnectionManager) startConnectionHeartbeat(co
 
 			select {
 			case <-time.After(connectionManager.heartbeatTimeout):
-				connectionManager.mu.Lock()
+				connectionManager.managerMutex.Lock()
 				s, ok := connectionManager.connections[connectionIdentifier]
 				if ok && s.pingNonce != "" {
-					connectionManager.mu.Unlock()
+					connectionManager.managerMutex.Unlock()
 					connectionManager.handleHeartbeatTimeout(connectionIdentifier)
 					return
 				}
-				connectionManager.mu.Unlock()
+				connectionManager.managerMutex.Unlock()
 			case <-connectionManager.ctx.Done():
 				return
 			}
@@ -415,14 +415,14 @@ func (connectionManager *WebsokcetConnectionManager) startHeartbeatMonitor() {
 }
 
 func (connectionManager *WebsokcetConnectionManager) checkHeartbeatTimeouts() {
-	connectionManager.mu.Lock()
-	defer connectionManager.mu.Unlock()
+	connectionManager.managerMutex.Lock()
+	defer connectionManager.managerMutex.Unlock()
 
 	now := time.Now()
 	for connectionIdentifier, state := range connectionManager.connections {
-		state.mu.Lock()
+		state.connectionMutex.Lock()
 		lastActive := state.lastActiveAt
-		state.mu.Unlock()
+		state.connectionMutex.Unlock()
 
 		if now.Sub(lastActive) > connectionManager.heartbeatTimeout {
 			go connectionManager.handleHeartbeatTimeout(connectionIdentifier)
@@ -437,7 +437,7 @@ func (connectionManager *WebsokcetConnectionManager) handleHeartbeatTimeout(conn
 		events.EventTypeHeartbeatTimeout,
 		events.HeartbeatEventData{
 			ConnectionIdentifier: connectionIdentifier,
-			Action:              "timeout",
+			Action:               "timeout",
 		},
 		map[string]string{"component": "connections"},
 	)
@@ -448,13 +448,13 @@ func (connectionManager *WebsokcetConnectionManager) handleHeartbeatTimeout(conn
 		fmt.Sprintf("连接心跳超时 [%s]，将断开连接", connectionIdentifier),
 	)
 
-	connectionManager.mu.Lock()
+	connectionManager.managerMutex.Lock()
 	state, exists := connectionManager.connections[connectionIdentifier]
 	if exists {
 		state.conn.Close()
 		delete(connectionManager.connections, connectionIdentifier)
 	}
-	connectionManager.mu.Unlock()
+	connectionManager.managerMutex.Unlock()
 }
 
 func WebsocketHandler(upgrader *websocket.Upgrader) {

@@ -306,8 +306,8 @@ func injectSecretToEnv(secretJSON string) error {
 	injected := 0
 	skipped := 0
 
-	for key, val := range secrets {
-		strVal, ok := val.(string)
+	for key, secretValue := range secrets {
+		stringValue, ok := secretValue.(string)
 		if !ok {
 			skipped++
 			continue
@@ -316,7 +316,7 @@ func injectSecretToEnv(secretJSON string) error {
 			skipped++
 			continue
 		}
-		if err := os.Setenv(key, strVal); err != nil {
+		if err := os.Setenv(key, stringValue); err != nil {
 			return fmt.Errorf("os.Setenv(%s) 失败: %w", key, err)
 		}
 		injected++
