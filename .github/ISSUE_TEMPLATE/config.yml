@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 安全漏洞报告
+    url: https://github.com/ctkqiang/LingFlow/security/advisories/new
+    about: 请勿通过公开 Issue 报告安全漏洞。使用 GitHub Security Advisory 私密报告。
+  - name: 技术讨论
+    url: https://github.com/ctkqiang/LingFlow/discussions
+    about: 技术问答、想法分享和通用讨论请使用 GitHub Discussions。

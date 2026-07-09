@@ -35,6 +35,7 @@
 - [监控与日志](#监控与日志)
 - [常见问题解答](#常见问题解答)
 - [项目结构](#项目结构)
+- [社区与贡献](#社区与贡献)
 
 ---
 
@@ -1595,6 +1596,55 @@ LingFlow/
             ├── tasks.md             # 任务分解
             └── checklist.md         # 检查清单
 ```
+
+---
+
+## 社区与贡献
+
+我们欢迎所有形式的贡献！无论是 Bug 报告、功能建议、代码提交还是文档改进。
+
+### 文档导航
+
+| 文档 | 说明 |
+|------|------|
+| [CONTRIBUTING.md](CONTRIBUTING.md) | 贡献指南 — 开发环境搭建、代码规范、提交规范、PR 流程 |
+| [SECURITY.md](SECURITY.md) | 安全政策 — 漏洞报告、安全架构、威胁模型、最佳实践 |
+| [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | 行为准则 — 社区行为规范 |
+| [CHANGELOG.md](CHANGELOG.md) | 变更日志 — 版本变更记录 |
+| [LICENSE](LICENSE) | MIT 开源许可证 |
+
+### 如何参与
+
+| 参与方式 | 渠道 | 说明 |
+|----------|------|------|
+| 报告 Bug | [GitHub Issues](https://github.com/ctkqiang/LingFlow/issues) | 使用 Bug 报告模板 |
+| 功能建议 | [GitHub Issues](https://github.com/ctkqiang/LingFlow/issues) | 使用功能请求模板 |
+| 技术讨论 | [GitHub Discussions](https://github.com/ctkqiang/LingFlow/discussions) | 问答、想法分享 |
+| 代码贡献 | [Pull Request](https://github.com/ctkqiang/LingFlow/pulls) | 遵循 [贡献指南](CONTRIBUTING.md) |
+| 安全漏洞 | [Security Advisory](https://github.com/ctkqiang/LingFlow/security/advisories/new) | **请勿通过公开 Issue 报告** |
+| 技能贡献 | Pull Request | 提交 `skills/*.md` 技能文件 |
+
+### 贡献流程
+
+```
+1. Fork 仓库
+   ↓
+2. 阅读贡献指南 (CONTRIBUTING.md)
+   ↓
+3. 创建功能分支 (feature/xxx)
+   ↓
+4. 编写代码 + 测试
+   ↓
+5. 提交 PR（使用 PR 模板）
+   ↓
+6. 代码审查
+   ↓
+7. 合并到 main
+```
+
+### 开源许可
+
+本项目基于 [MIT License](LICENSE) 开源，可自由使用、修改和分发。
 
 ---
 
