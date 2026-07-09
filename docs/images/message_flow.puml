@@ -1,0 +1,60 @@
+@startuml
+!theme plain
+
+skinparam backgroundColor #FFFFFF
+skinparam componentStyle rectangle
+skinparam noteBackgroundColor #F5F5F5
+skinparam noteBorderColor #CCCCCC
+skinparam arrowColor #333333
+skinparam sequence {
+  LifeLineBorderColor #333333
+  LifeLineBackgroundColor #E8E8E8
+  ParticipantBorderColor #333333
+  ParticipantBackgroundColor #FFFFFF
+  ParticipantPadding 15
+  BoxBorderColor #CCCCCC
+  BoxBackgroundColor #FAFAFA
+}
+
+title LingFlow 消息处理流程
+
+participant "客户端" as Client
+participant "服务端" as Server
+participant "AWS" as AWS
+
+== 1. 认证阶段 ==
+
+Client -> Server: POST /api/auth/token\n{ "user_id": "xxx" }
+Server -> Server: 验证用户身份
+Server --> Client: { token, user_id }
+
+== 2. WebSocket 连接 ==
+
+Client -> Server: WS Connect ?token=xxx
+Server -> Server: 验证 Token + Origin + IP限制
+Server --> Client: 101 Switching Protocols
+
+== 3. 技能列表推送 ==
+
+Server -> AWS: LoadAllSkills()
+AWS --> Server: 技能列表
+Server --> Client: system_skills_list\n(技能列表推送)
+
+== 4. 消息处理 ==
+
+Client -> Server: user_chat\n{ message: "分析交易" }
+Server -> Server: 技能匹配 (关键词检索)
+Server --> Client: system_thinking\n{ phase: skill_selection }
+
+Server -> AWS: Converse API\n(生成响应)
+AWS --> Server: LLM 响应
+Server --> Client: system_thinking\n{ phase: llm_generation }
+
+Server --> Client: system_response\n{ content, tokens, latency }
+
+== 5. 心跳检测 ==
+
+Client -> Server: heartbeat_chat (ping)
+Server --> Client: heartbeat_chat (pong)
+
+@enduml
