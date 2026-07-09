@@ -137,11 +137,10 @@ func serveWebSocketHTTPServer(
 		"已启用 REST 认证接口 /api/auth/token")
 
 	skillRegistry := NewSkillRegistry()
-	bedrockConfig := NewBedrockConfig()
-	llmService, err := NewBedrockLLMService(runtimeContext, bedrockConfig)
+	llmService, err := NewLLMService(runtimeContext)
 	if err != nil {
-		utilities.LogError("Services", "serveWebSocketHTTPServer", err, 0, "初始化 Bedrock LLM 服务失败")
-		return fmt.Errorf("初始化 Bedrock LLM 服务失败: %w", err)
+		utilities.LogError("Services", "serveWebSocketHTTPServer", err, 0, "初始化 LLM 服务失败")
+		return fmt.Errorf("初始化 LLM 服务失败: %w", err)
 	}
 
 	s3Loader := NewS3SkillLoader()

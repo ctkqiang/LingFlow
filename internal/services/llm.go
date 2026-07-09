@@ -282,6 +282,72 @@ func derefInt32(pointer *int32) int32 {
 	return *pointer
 }
 
+// MockLLMService 是一个用于开发和测试的模拟 LLM 服务，不调用真实的 Bedrock API。
+// 通过设置环境变量 LLM_MOCK_MODE=true 启用。
+type MockLLMService struct{}
+
+// NewMockLLMService 创建一个模拟 LLM 服务实例。
+func NewMockLLMService() *MockLLMService {
+	utilities.LogProgress("LLM", "NewMockLLMService", "模拟 LLM 模式已启用，所有请求将返回模拟响应")
+	return &MockLLMService{}
+}
+
+// Generate 返回一个模拟的 LLM 响应，包含用户消息和技能上下文的信息。
+func (service *MockLLMService) Generate(ctx context.Context, request LLMRequest) (LLMResponse, error) {
+	utilities.LogProgress("MockLLM", "Generate", fmt.Sprintf("收到请求: %s", truncateString(request.UserMessage, 50)))
+
+	// 构建模拟响应内容
+	var responseContent strings.Builder
+	responseContent.WriteString("【模拟响应】\n\n")
+	responseContent.WriteString(fmt.Sprintf("收到您的消息: \"%s\"\n\n", request.UserMessage))
+
+	if request.SkillContext != "" {
+		responseContent.WriteString("【已使用技能上下文】\n")
+		responseContent.WriteString(truncateString(request.SkillContext, 200))
+		responseContent.WriteString("\n\n")
+	}
+
+	if request.SystemPrompt != "" {
+		responseContent.WriteString("【系统提示词已注入】\n")
+		responseContent.WriteString(truncateString(request.SystemPrompt, 100))
+		responseContent.WriteString("\n\n")
+	}
+
+	responseContent.WriteString("---\n")
+	responseContent.WriteString("这是模拟响应。要获取真实 LLM 响应，请设置 LLM_MOCK_MODE=false 并配置正确的 AWS Bedrock 凭证。")
+
+	return LLMResponse{
+		Content:      responseContent.String(),
+		FinishReason: "end_turn",
+		TokensUsed:   len(request.UserMessage) * 2,
+		SkillID:      request.SkillID,
+		Latency:      100 * time.Millisecond,
+	}, nil
+}
+
+// HealthCheck 模拟健康检查，始终返回成功。
+func (service *MockLLMService) HealthCheck(ctx context.Context) error {
+	utilities.LogProgress("MockLLM", "HealthCheck", "模拟健康检查通过")
+	return nil
+}
+
+// NewLLMService 根据环境变量创建合适的 LLM 服务实例。
+// 如果设置了 LLM_MOCK_MODE=true，返回 MockLLMService；否则返回 BedrockLLMService。
+func NewLLMService(ctx context.Context) (LLMService, error) {
+	if strings.EqualFold(utilities.GetEnv("LLM_MOCK_MODE", ""), "true") {
+		return NewMockLLMService(), nil
+	}
+	return NewBedrockLLMService(ctx, NewBedrockConfig())
+}
+
+// truncateString 截断字符串，如果超过最大长度则添加省略号。
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
+}
+
 // buildSkillAugmentedPrompt 将技能上下文注入到系统提示词中。
 func buildSkillAugmentedPrompt(basePrompt, skillContext string) string {
 	var promptBuilder strings.Builder

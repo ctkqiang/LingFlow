@@ -29,12 +29,18 @@ type S3SkillLoader struct {
 
 func NewS3SkillLoader() *S3SkillLoader {
 	bucket := os.Getenv("SKILLS_S3_BUCKET")
+	if bucket == "" {
+		bucket = os.Getenv("AWS_SKILLS_S3_BUCKET")
+	}
+	// 如果是 ARN 格式 (arn:aws:s3:::bucket-name)，提取纯 bucket 名称
+	bucket = extractBucketFromARN(bucket)
+
 	prefix := utilities.GetEnv("SKILLS_S3_PREFIX", defaultSkillsS3Prefix)
 	region := utilities.GetEnv("AWS_REGION", "ap-east-1")
 
 	if bucket == "" {
 		utilities.LogProgress("S3SkillLoader", "NewS3SkillLoader",
-			"SKILLS_S3_BUCKET 未设置，将使用本地模式（无技能）")
+			"SKILLS_S3_BUCKET / AWS_SKILLS_S3_BUCKET 未设置，将使用本地模式（无技能）")
 		return nil
 	}
 
@@ -43,6 +49,17 @@ func NewS3SkillLoader() *S3SkillLoader {
 		prefix: prefix,
 		region: region,
 	}
+}
+
+// extractBucketFromARN 从 S3 ARN 中提取 bucket 名称。
+// 支持格式: arn:aws:s3:::bucket-name
+func extractBucketFromARN(input string) string {
+	input = strings.TrimSpace(input)
+	const arnPrefix = "arn:aws:s3:::"
+	if strings.HasPrefix(input, arnPrefix) {
+		return strings.TrimPrefix(input, arnPrefix)
+	}
+	return input
 }
 
 func (loader *S3SkillLoader) getClient(ctx context.Context) (*s3.Client, error) {
