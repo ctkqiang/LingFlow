@@ -2,13 +2,19 @@ package connections
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"ling_flow/internal/events"
 	"ling_flow/internal/models"
 	"ling_flow/internal/utilities"
+	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -20,6 +26,8 @@ const (
 	defaultHeartbeatInterval     = 30 * time.Second
 	defaultHeartbeatTimeout      = 90 * time.Second
 	defaultHeartbeatWriteTimeout = 10 * time.Second
+	defaultMaxConnectionsPerIP   = 10
+	defaultMaxFrameBytes         = 64 * 1024 // 64KB WebSocket frame cap
 )
 
 type MessageHandler interface {
@@ -28,6 +36,12 @@ type MessageHandler interface {
 
 type ChatStreamer interface {
 	HandleUserChatWithStreaming(ctx context.Context, connectionID string, messagePayload []byte) bool
+}
+
+// ConnectionReadyNotifier 连接建立就绪时的回调接口，
+// 用于向新连接发送初始数据（如技能列表、欢迎消息等）。
+type ConnectionReadyNotifier interface {
+	OnConnectionReady(ctx context.Context, connectionID string)
 }
 
 const WebSocketChatEndpointPathPrefix = "/chat/"
@@ -44,22 +58,27 @@ type connectionState struct {
 }
 
 type WebsokcetConnectionManager struct {
-	connections       map[string]*connectionState
-	eventStore        events.EventStore
-	managerMutex      sync.Mutex
-	heartbeatInterval time.Duration
-	heartbeatTimeout  time.Duration
-	writeTimeout      time.Duration
-	ctx               context.Context
-	cancel            context.CancelFunc
+	connections         map[string]*connectionState
+	eventStore          events.EventStore
+	managerMutex        sync.Mutex
+	heartbeatInterval   time.Duration
+	heartbeatTimeout    time.Duration
+	writeTimeout        time.Duration
+	maxConnectionsPerIP int
+	ipConnectionCount   map[string]int
+	ipConnectionMutex   sync.Mutex
+	ctx                 context.Context
+	cancel              context.CancelFunc
 }
 
 func NewWebsocketGatewayConnectionManager() *WebsokcetConnectionManager {
 	return &WebsokcetConnectionManager{
-		connections:       make(map[string]*connectionState),
-		heartbeatInterval: defaultHeartbeatInterval,
-		heartbeatTimeout:  defaultHeartbeatTimeout,
-		writeTimeout:      defaultHeartbeatWriteTimeout,
+		connections:         make(map[string]*connectionState),
+		ipConnectionCount:   make(map[string]int),
+		heartbeatInterval:   defaultHeartbeatInterval,
+		heartbeatTimeout:    defaultHeartbeatTimeout,
+		writeTimeout:        defaultHeartbeatWriteTimeout,
+		maxConnectionsPerIP: defaultMaxConnectionsPerIP,
 	}
 }
 
@@ -87,15 +106,24 @@ func NewEventSourcedWebsocketGatewayConnectionManager(
 		}
 	}
 
+	maxPerIP := defaultMaxConnectionsPerIP
+	if v := os.Getenv("WSS_MAX_CONNECTIONS_PER_IP"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			maxPerIP = n
+		}
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	manager := &WebsokcetConnectionManager{
-		connections:       make(map[string]*connectionState),
-		eventStore:        eventStore,
-		heartbeatInterval: interval,
-		heartbeatTimeout:  timeout,
-		writeTimeout:      writeTimeout,
-		ctx:               ctx,
-		cancel:            cancel,
+		connections:         make(map[string]*connectionState),
+		ipConnectionCount:   make(map[string]int),
+		eventStore:          eventStore,
+		heartbeatInterval:   interval,
+		heartbeatTimeout:    timeout,
+		writeTimeout:        writeTimeout,
+		maxConnectionsPerIP: maxPerIP,
+		ctx:                 ctx,
+		cancel:              cancel,
 	}
 
 	go manager.startHeartbeatMonitor()
@@ -114,7 +142,24 @@ func NewDefaultUpgrader() *websocket.Upgrader {
 func (connectionManager *WebsokcetConnectionManager) AddConnection(
 	connectionIdentifier string,
 	websocketConnection *websocket.Conn,
-) {
+) bool {
+	remoteIP := remoteIPFromAddr(websocketConnection.RemoteAddr().String())
+	if remoteIP != "" && connectionManager.maxConnectionsPerIP > 0 {
+		connectionManager.ipConnectionMutex.Lock()
+		if connectionManager.ipConnectionCount[remoteIP] >= connectionManager.maxConnectionsPerIP {
+			connectionManager.ipConnectionMutex.Unlock()
+			utilities.LogWarn(
+				"Connections",
+				"AddConnection",
+				fmt.Sprintf("IP %s 达到最大连接数 %d，拒绝新连接", remoteIP, connectionManager.maxConnectionsPerIP),
+				0,
+			)
+			return false
+		}
+		connectionManager.ipConnectionCount[remoteIP]++
+		connectionManager.ipConnectionMutex.Unlock()
+	}
+
 	connectionManager.managerMutex.Lock()
 	defer connectionManager.managerMutex.Unlock()
 
@@ -142,22 +187,36 @@ func (connectionManager *WebsokcetConnectionManager) AddConnection(
 		"连接管理",
 		fmt.Sprintf("连接已添加，当前连接总数: %d", len(connectionManager.connections)),
 	)
+	return true
 }
 
 func (connectionManager *WebsokcetConnectionManager) RemoveConnection(connectionIdentifier string) {
 	connectionManager.managerMutex.Lock()
-	defer connectionManager.managerMutex.Unlock()
 
 	state, exists := connectionManager.connections[connectionIdentifier]
+	if exists {
+		remoteIP := remoteIPFromAddr(state.conn.RemoteAddr().String())
+		if remoteIP != "" {
+			connectionManager.ipConnectionMutex.Lock()
+			connectionManager.ipConnectionCount[remoteIP]--
+			if connectionManager.ipConnectionCount[remoteIP] <= 0 {
+				delete(connectionManager.ipConnectionCount, remoteIP)
+			}
+			connectionManager.ipConnectionMutex.Unlock()
+		}
+
+		if state.heartbeatTicker != nil {
+			state.heartbeatTicker.Stop()
+		}
+
+		delete(connectionManager.connections, connectionIdentifier)
+	}
+	connectionManager.managerMutex.Unlock()
+
 	if !exists {
 		return
 	}
 
-	if state.heartbeatTicker != nil {
-		state.heartbeatTicker.Stop()
-	}
-
-	delete(connectionManager.connections, connectionIdentifier)
 	connectionManager.recordEvent(
 		context.Background(),
 		connectionIdentifier,
@@ -338,7 +397,13 @@ func (connectionManager *WebsokcetConnectionManager) sendPing(connectionIdentifi
 		return
 	}
 
-	nonce := fmt.Sprintf("%d", time.Now().UnixNano())
+	nonceBytes := make([]byte, 16)
+	if _, randErr := rand.Read(nonceBytes); randErr != nil {
+		connectionManager.managerMutex.Unlock()
+		utilities.Error("生成心跳随机数失败 [%s]: %v", connectionIdentifier, randErr)
+		return
+	}
+	nonce := hex.EncodeToString(nonceBytes)
 	state.pingNonce = nonce
 	state.pingSentAt = time.Now()
 	state.lastActiveAt = time.Now()
@@ -470,7 +535,7 @@ func (connectionManager *WebsokcetConnectionManager) handleHeartbeatTimeout(conn
 
 func WebsocketHandler(upgrader *websocket.Upgrader) {
 	websocketConnectionManager := NewWebsocketGatewayConnectionManager()
-	RegisterWebSocketHandlers(http.DefaultServeMux, websocketConnectionManager, upgrader, nil, nil)
+	RegisterWebSocketHandlers(http.DefaultServeMux, websocketConnectionManager, upgrader, nil, nil, nil)
 }
 
 func RegisterWebSocketHandlers(
@@ -479,6 +544,7 @@ func RegisterWebSocketHandlers(
 	upgrader *websocket.Upgrader,
 	messageHandler MessageHandler,
 	chatStreamer ChatStreamer,
+	connectionNotifier ConnectionReadyNotifier,
 ) {
 	if upgrader == nil {
 		upgrader = NewDefaultUpgrader()
@@ -494,26 +560,68 @@ func RegisterWebSocketHandlers(
 			return
 		}
 
+		authenticatedUserID, authOK := authenticateWebSocketUpgrade(httpRequest)
+		if !authOK {
+			utilities.LogWarn(
+				"Connections",
+				"WebsocketHandler",
+				fmt.Sprintf("WebSocket 升级鉴权失败，拒绝连接 [%s]", connectionIdentifier),
+				0,
+				fmt.Sprintf("remote=%s", httpRequest.RemoteAddr),
+			)
+			http.Error(responseWriter, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+
 		websocketConnection, upgradeError := upgrader.Upgrade(responseWriter, httpRequest, nil)
 		if upgradeError != nil {
 			utilities.Error("无法升级 HTTP 请求为 WebSocket 连接: %v", upgradeError)
 			return
 		}
 
-		connectionManager.AddConnection(connectionIdentifier, websocketConnection)
+		// Enforce a hard cap on incoming frame size to prevent OOM via giant frames.
+		websocketConnection.SetReadLimit(defaultMaxFrameBytes)
+
+		accepted := connectionManager.AddConnection(connectionIdentifier, websocketConnection)
+		if !accepted {
+			_ = websocketConnection.Close()
+			http.Error(responseWriter, "too many connections", http.StatusTooManyRequests)
+			return
+		}
 		defer func() {
 			connectionManager.RemoveConnection(connectionIdentifier)
 			_ = websocketConnection.Close()
 		}()
 
+		utilities.LogProgress(
+			"WebsocketHandler",
+			"Connected",
+			fmt.Sprintf("WebSocket 已连接 [%s] user=%s", connectionIdentifier, authenticatedUserID),
+		)
+
+		if connectionNotifier != nil {
+			go connectionNotifier.OnConnectionReady(httpRequest.Context(), connectionIdentifier)
+		}
+
+		readDeadline := 2 * connectionManager.heartbeatTimeout
 		for {
+			_ = websocketConnection.SetReadDeadline(time.Now().Add(readDeadline))
 			messageType, messagePayload, readError := websocketConnection.ReadMessage()
 			if readError != nil {
-				utilities.LogProgress(
-					"WebsocketHandler",
-					"ReadMessage",
-					fmt.Sprintf("连接关闭 [%s]: %v", connectionIdentifier, readError),
-				)
+				if isExpectedCloseError(readError) {
+					utilities.LogProgress(
+						"WebsocketHandler",
+						"ReadMessage",
+						fmt.Sprintf("连接正常关闭 [%s] user=%s", connectionIdentifier, authenticatedUserID),
+					)
+				} else {
+					utilities.LogWarn(
+						"WebsocketHandler",
+						"ReadMessage",
+						fmt.Sprintf("连接异常关闭 [%s]: %v", connectionIdentifier, readError),
+						0,
+					)
+				}
 				return
 			}
 
@@ -716,19 +824,198 @@ func (connectionManager *WebsokcetConnectionManager) recordEvent(
 
 func isWebSocketOriginAllowed(httpRequest *http.Request) bool {
 	if strings.EqualFold(os.Getenv("WSS_ALLOW_ALL_ORIGINS"), "true") {
+		utilities.LogWarn(
+			"Connections",
+			"isWebSocketOriginAllowed",
+			"WSS_ALLOW_ALL_ORIGINS=true 已启用，接受所有 Origin（仅限本地调试）",
+			0,
+		)
 		return true
 	}
 
-	requestOrigin := httpRequest.Header.Get("Origin")
+	if !utilities.IsProductionMode() {
+		requestOrigin := strings.TrimSpace(httpRequest.Header.Get("Origin"))
+		utilities.LogProgress(
+			"Connections",
+			"isWebSocketOriginAllowed",
+			fmt.Sprintf("开发模式，允许 Origin: %s", requestOrigin),
+		)
+		return true
+	}
+
+	requestOrigin := strings.TrimSpace(httpRequest.Header.Get("Origin"))
 	if requestOrigin == "" {
-		return true
+		return false
 	}
 
-	for _, allowedOrigin := range strings.Split(os.Getenv("WSS_ALLOWED_ORIGINS"), ",") {
+	allowedOriginsList := os.Getenv("WSS_ALLOWED_ORIGINS")
+	if allowedOriginsList == "" {
+		return false
+	}
+
+	for _, allowedOrigin := range strings.Split(allowedOriginsList, ",") {
 		if strings.EqualFold(strings.TrimSpace(allowedOrigin), requestOrigin) {
 			return true
 		}
 	}
+	return false
+}
 
-	return strings.Contains(requestOrigin, "://"+httpRequest.Host)
+func isLocalhostOrigin(origin string) bool {
+	localhostVariants := []string{
+		"http://localhost",
+		"http://127.0.0.1",
+		"https://localhost",
+		"https://127.0.0.1",
+	}
+	for _, variant := range localhostVariants {
+		if strings.HasPrefix(origin, variant) {
+			return true
+		}
+	}
+	return false
+}
+
+func remoteIPFromAddr(addr string) string {
+	if addr == "" {
+		return ""
+	}
+	if host, _, err := net.SplitHostPort(addr); err == nil {
+		return host
+	}
+	return addr
+}
+
+// isExpectedCloseError returns true when the WebSocket closed for a benign
+// reason (client disconnect, normal close handshake, idle timeout).
+func isExpectedCloseError(err error) bool {
+	if err == nil {
+		return true
+	}
+	if websocket.IsCloseError(
+		err,
+		websocket.CloseNormalClosure,
+		websocket.CloseGoingAway,
+		websocket.CloseNoStatusReceived,
+	) {
+		return true
+	}
+	if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+		return true
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "use of closed network connection") ||
+		strings.Contains(msg, "broken pipe") ||
+		strings.Contains(msg, "connection reset by peer")
+}
+
+// authenticateWebSocketUpgrade 验证 WebSocket 升级前的认证。
+//
+// 判断逻辑：
+//   - 非生产模式（MODE!=production）：验证 token 是否为 debug-token-* 格式，提取用户 ID
+//   - 生产模式（MODE=production）：调用 authenticateWebSocketProduction() 执行真实认证
+//
+// 开发模式流程：
+//   1. 客户端先调用 POST /api/auth/token 获取 debug-token-{user_id}
+//   2. 连接 WebSocket 时携带 ?token=debug-token-{user_id}
+//   3. 服务端验证 token 格式，提取 user_id
+func authenticateWebSocketUpgrade(httpRequest *http.Request) (string, bool) {
+	token := strings.TrimSpace(httpRequest.URL.Query().Get("token"))
+	if token == "" {
+		authHeader := strings.TrimSpace(httpRequest.Header.Get("Authorization"))
+		token = strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
+	}
+
+	if !utilities.IsProductionMode() {
+		if token == "" {
+			utilities.LogWarn(
+				"Connections",
+				"authenticateWebSocketUpgrade",
+				"开发模式下需要提供 token，请先调用 POST /api/auth/token",
+				0,
+				fmt.Sprintf("remote=%s", httpRequest.RemoteAddr),
+			)
+			return "", false
+		}
+
+		if strings.HasPrefix(token, "debug-token-") {
+			userID := strings.TrimPrefix(token, "debug-token-")
+			utilities.LogProgress(
+				"Connections",
+				"authenticateWebSocketUpgrade",
+				fmt.Sprintf("开发模式认证通过，用户=%s", userID),
+				fmt.Sprintf("remote=%s", httpRequest.RemoteAddr),
+			)
+			return userID, true
+		}
+
+		utilities.LogWarn(
+			"Connections",
+			"authenticateWebSocketUpgrade",
+			"无效的 debug token 格式，请使用 POST /api/auth/token 获取",
+			0,
+			fmt.Sprintf("remote=%s", httpRequest.RemoteAddr),
+		)
+		return "", false
+	}
+
+	return authenticateWebSocketProduction(httpRequest)
+}
+
+// authenticateWebSocketProduction 在生产模式下执行真实的 WebSocket 认证逻辑。
+// 用户需要根据自己的业务需求实现以下逻辑：
+//
+// 1. 从请求中提取认证凭证（token、API Key 等）
+// 2. 验证凭证的有效性（检查签名、过期时间等）
+// 3. 提取并返回用户 ID
+//
+// 当前为占位实现，请根据实际需求修改：
+//   - 修改凭证提取方式（当前从 ?token= 或 Authorization: Bearer 提取）
+//   - 添加 Token 验证逻辑（JWT 解析、HMAC 验证等）
+//   - 添加速率限制和防暴力破解措施
+func authenticateWebSocketProduction(httpRequest *http.Request) (string, bool) {
+	token := strings.TrimSpace(httpRequest.URL.Query().Get("token"))
+	if token == "" {
+		authHeader := strings.TrimSpace(httpRequest.Header.Get("Authorization"))
+		token = strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
+	}
+
+	if token == "" {
+		utilities.LogWarn(
+			"Connections",
+			"authenticateWebSocketProduction",
+			"生产模式下缺少认证 token",
+			0,
+			fmt.Sprintf("remote=%s", httpRequest.RemoteAddr),
+		)
+		return "", false
+	}
+
+	// TODO: 用户需要实现的认证逻辑
+	// ============================================
+	// 1. 解析并验证 Token（JWT、HMAC 等）
+	//    claims, err := parseAndVerifyToken(token)
+	//    if err != nil {
+	//        return "", false
+	//    }
+	//
+	// 2. 提取用户 ID
+	//    userID := claims.UserID
+	// ============================================
+
+	// 以下为示例代码，生产环境必须替换为真实实现
+	_ = token // 移除警告：生产环境需要使用此变量
+
+	utilities.LogProgress(
+		"Connections",
+		"authenticateWebSocketProduction",
+		fmt.Sprintf("生产模式认证通过，用户=%s", "user-from-token"),
+	)
+	return "user-from-token", true
+}
+
+func computeTokenMAC(payload string, secret string) []byte {
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(payload))
+	return mac.Sum(nil)
 }

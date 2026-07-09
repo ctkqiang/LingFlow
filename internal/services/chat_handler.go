@@ -244,6 +244,61 @@ func (handler *ChatHandler) buildErrorResponse(event, errorMessage string) model
 	}
 }
 
+// OnConnectionReady 是 ConnectionReadyNotifier 接口的实现。
+// 连接建立后，向客户端推送可用技能列表。
+func (handler *ChatHandler) OnConnectionReady(ctx context.Context, connectionID string) {
+	if handler.messageSender == nil {
+		return
+	}
+
+	skills := handler.registry.ListSkills()
+	skillItems := make([]models.SkillListItem, 0, len(skills))
+	for _, s := range skills {
+		skillItems = append(skillItems, models.SkillListItem{
+			SkillIdentifier:  s.SkillIdentifier,
+			SkillDisplayName: s.SkillDisplayName,
+			SkillDescription: s.SkillDescription,
+			SkillCategory:    s.SkillCategory,
+			SearchKeywords:   s.SearchKeywords,
+		})
+	}
+
+	source := "local"
+	if handler.s3Loader != nil {
+		source = "s3"
+	}
+
+	listData := models.SystemSkillsListData{
+		Skills:    skillItems,
+		Total:     len(skillItems),
+		Source:    source,
+		UpdatedAt: time.Now(),
+	}
+
+	dataBytes, err := json.Marshal(listData)
+	if err != nil {
+		utilities.LogError("ChatHandler", "OnConnectionReady", err, 0)
+		return
+	}
+
+	listMessage := models.WSMessage{
+		Type:      models.SystemSkillsList,
+		Data:      json.RawMessage(dataBytes),
+		Timestamp: time.Now(),
+	}
+
+	payload, err := json.Marshal(listMessage)
+	if err != nil {
+		utilities.LogError("ChatHandler", "OnConnectionReady", err, 0)
+		return
+	}
+
+	if sendErr := handler.messageSender.SendMessage(connectionID, payload); sendErr != nil {
+		utilities.LogWarn("ChatHandler", "OnConnectionReady",
+			fmt.Sprintf("发送技能列表失败: %v", sendErr), 0)
+	}
+}
+
 // HandleUserChatWithStreaming 是 ChatStreamer 接口的实现。
 // 检查消息是否为 user_chat，是则异步启动流式处理并返回 true。
 func (handler *ChatHandler) HandleUserChatWithStreaming(
@@ -294,22 +349,7 @@ func (handler *ChatHandler) processUserChatStream(
 
 	skillSelectionStart := time.Now()
 
-	var availableSkillIDs []string
-	if len(userData.AvailableSkills) > 0 {
-		availableSkillIDs = userData.AvailableSkills
-	} else if handler.s3Loader != nil {
-		loadedSkills, err := handler.s3Loader.LoadAllSkills(ctx)
-		if err != nil {
-			utilities.LogError("ChatHandler", "LoadAllSkills", err, 0)
-		} else {
-			for _, skill := range loadedSkills {
-				if _, exists := handler.registry.GetSkill(skill.SkillIdentifier); !exists {
-					_ = handler.registry.RegisterSkill(skill)
-				}
-				availableSkillIDs = append(availableSkillIDs, skill.SkillIdentifier)
-			}
-		}
-	}
+	availableSkillIDs := handler.registry.ListSkillIDs()
 
 	var selectedSkill *models.SkillDefinition
 	var matchedResults []models.RetrievalResult

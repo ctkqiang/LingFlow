@@ -94,6 +94,18 @@ func (registry *SkillRegistry) ListSkills() []models.SkillMetadata {
 	return result
 }
 
+// ListSkillIDs 返回所有已注册技能的标识符列表。
+func (registry *SkillRegistry) ListSkillIDs() []string {
+	registry.registryMutex.RLock()
+	defer registry.registryMutex.RUnlock()
+
+	result := make([]string, 0, len(registry.metadataIndex))
+	for _, meta := range registry.metadataIndex {
+		result = append(result, meta.SkillIdentifier)
+	}
+	return result
+}
+
 // RetrieveSkills 执行基于关键词的检索，查找与用户查询相关的技能。
 // 返回按相关性评分排序的结果（最高分在前）。
 func (registry *SkillRegistry) RetrieveSkills(userQuery string) []models.RetrievalResult {

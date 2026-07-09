@@ -135,3 +135,27 @@ func IsLocalMode() bool {
 
 	return !onAWS && !onAliyun
 }
+
+// IsProductionMode 检测当前是否运行在生产模式下。
+//
+// 判断逻辑：检查以下环境变量是否设置为 "production"（大小写不敏感）：
+//   - MODE
+//   - RUNTIME_MODE
+//   - ENV
+//   - NODE_ENV
+//
+// 若以上任一变量值为 "production"，则认为处于生产模式。
+// 默认（未设置或其他值）为非生产模式。
+//
+// 返回：
+//   - true  : 当前处于生产模式
+//   - false : 当前处于开发/调试模式
+func IsProductionMode() bool {
+	modeVariables := []string{"MODE", "RUNTIME_MODE", "ENV", "NODE_ENV"}
+	for _, key := range modeVariables {
+		if strings.EqualFold(os.Getenv(key), "production") {
+			return true
+		}
+	}
+	return false
+}

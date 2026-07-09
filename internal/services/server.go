@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"ling_flow/internal/connections"
@@ -110,9 +111,30 @@ func serveWebSocketHTTPServer(
 	runtimeContext context.Context,
 	websocketServerConfiguration WebSocketServerConfig,
 ) error {
+	tlsRequired := !utilities.IsLocalMode()
+	hasTLSConfig := websocketServerConfiguration.CertFile != "" && websocketServerConfiguration.KeyFile != ""
+	if tlsRequired && !hasTLSConfig {
+		return fmt.Errorf(
+			"WebSocket TLS 证书缺失：在非 local 模式下必须配置 WSS_CERT_FILE 和 WSS_KEY_FILE 启用 wss://",
+		)
+	}
+	if !hasTLSConfig {
+		utilities.LogWarn(
+			"Services",
+			"serveWebSocketHTTPServer",
+			"未配置 TLS 证书，WebSocket 以明文 ws:// 启动（仅限 local 模式）",
+			0,
+		)
+	}
+
 	websocketServeMux := http.NewServeMux()
 	eventStore := events.NewInMemoryEventStore()
 	websocketConnectionManager := connections.NewEventSourcedWebsocketGatewayConnectionManager(eventStore)
+
+	authHandler := NewAuthHandler()
+	RegisterAuthHandlers(websocketServeMux, authHandler)
+	utilities.LogProgress("Services", "serveWebSocketHTTPServer",
+		"已启用 REST 认证接口 /api/auth/token")
 
 	skillRegistry := NewSkillRegistry()
 	bedrockConfig := NewBedrockConfig()
@@ -144,6 +166,7 @@ func serveWebSocketHTTPServer(
 		connections.NewDefaultUpgrader(),
 		chatHandler,
 		chatHandler,
+		chatHandler,
 	)
 
 	websocketServerAddress := websocketServerConfiguration.Address
@@ -160,15 +183,23 @@ func serveWebSocketHTTPServer(
 	serverErrorChannel := make(chan error, 1)
 
 	go func() {
+		protocol := "ws"
+		if hasTLSConfig {
+			protocol = "wss"
+		}
 		utilities.LogProgress(
 			"Services",
 			"WebSocketServer",
 			"监听 WebSocket endpoint",
 			fmt.Sprintf("addr=%s", websocketServerAddress),
+			fmt.Sprintf("protocol=%s", protocol),
 			"path=/chat/{uuid}",
 		)
 
-		if websocketServerConfiguration.CertFile != "" && websocketServerConfiguration.KeyFile != "" {
+		if hasTLSConfig {
+			websocketHTTPServer.TLSConfig = &tls.Config{
+				MinVersion: tls.VersionTLS12,
+			}
 			serverErrorChannel <- websocketHTTPServer.ListenAndServeTLS(
 				websocketServerConfiguration.CertFile,
 				websocketServerConfiguration.KeyFile,
