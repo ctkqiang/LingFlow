@@ -35,17 +35,19 @@ func NewS3SkillLoader() *S3SkillLoader {
 	if bucket == "" {
 		bucket = os.Getenv("AWS_SKILLS_S3_BUCKET")
 	}
-	// 如果是 ARN 格式 (arn:aws:s3:::bucket-name)，提取纯 bucket 名称
 	bucket = extractBucketFromARN(bucket)
 
 	prefix := utilities.GetEnv("SKILLS_S3_PREFIX", defaultSkillsS3Prefix)
-	region := utilities.GetEnv("AWS_REGION", "ap-east-1")
+	region := utilities.GetEnv("S3_REGION", utilities.GetEnv("AWS_REGION", "ap-east-1"))
 
 	if bucket == "" {
 		utilities.LogProgress("S3SkillLoader", "NewS3SkillLoader",
 			"SKILLS_S3_BUCKET / AWS_SKILLS_S3_BUCKET 未设置，将使用本地模式（无技能）")
 		return nil
 	}
+
+	utilities.LogProgress("S3SkillLoader", "NewS3SkillLoader",
+		fmt.Sprintf("S3 技能加载器初始化: bucket=%s, prefix=%s, region=%s", bucket, prefix, region))
 
 	return &S3SkillLoader{
 		bucket: bucket,
@@ -239,8 +241,8 @@ func (loader *S3SkillLoader) UploadSkill(ctx context.Context, skillName string, 
 		ContentType: aws.String("text/markdown; charset=utf-8"),
 	})
 	if err != nil {
-		return fmt.Errorf("S3 PutObject 失败 (bucket=%s key=%s): %w",
-			loader.bucket, skillKey, err)
+		return fmt.Errorf("S3 PutObject 失败 (bucket=%s key=%s region=%s): %w",
+			loader.bucket, skillKey, loader.region, err)
 	}
 
 	utilities.LogSuccess("S3SkillLoader", "UploadSkill", time.Since(start),
@@ -279,8 +281,8 @@ func (loader *S3SkillLoader) SkillExists(ctx context.Context, skillName string) 
 		if errors.As(err, &apiErr) && (apiErr.ErrorCode() == "NotFound" || apiErr.ErrorCode() == "NoSuchKey") {
 			return false, nil
 		}
-		return false, fmt.Errorf("S3 HeadObject 失败 (bucket=%s key=%s): %w",
-			loader.bucket, skillKey, err)
+		return false, fmt.Errorf("S3 HeadObject 失败 (bucket=%s key=%s region=%s): %w",
+			loader.bucket, skillKey, loader.region, err)
 	}
 	return true, nil
 }
@@ -292,6 +294,31 @@ func (loader *S3SkillLoader) StorageURI(skillName string) string {
 		return ""
 	}
 	return fmt.Sprintf("s3://%s/%s", loader.bucket, loader.buildSkillKey(skillName))
+}
+
+// DeleteSkill 从 S3 删除指定技能文件。
+// 用于创建流程中清理预留的空占位文件。
+func (loader *S3SkillLoader) DeleteSkill(ctx context.Context, skillName string) error {
+	if loader == nil || loader.bucket == "" {
+		return fmt.Errorf("S3 技能加载器未初始化")
+	}
+
+	client, err := loader.getClient(ctx)
+	if err != nil {
+		return err
+	}
+
+	skillKey := loader.buildSkillKey(skillName)
+
+	_, err = client.DeleteObject(ctx, &s3.DeleteObjectInput{
+		Bucket: aws.String(loader.bucket),
+		Key:    aws.String(skillKey),
+	})
+	if err != nil {
+		return fmt.Errorf("S3 DeleteObject 失败 (bucket=%s key=%s): %w",
+			loader.bucket, skillKey, err)
+	}
+	return nil
 }
 
 func (loader *S3SkillLoader) buildSkillKey(skillIdentifier string) string {

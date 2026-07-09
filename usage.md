@@ -46,6 +46,42 @@ go test ./...
 | `SKILLS_S3_BUCKET` | 存储技能文件的 S3 存储桶名称 | 是 |
 | `SKILLS_S3_PREFIX` | S3 中技能文件的前缀 | (空) |
 
+### IAM 策略（S3 技能存储桶）
+
+LingFlow 需要对技能存储桶执行以下 S3 操作。请将此策略附加到运行 LingFlow 的 IAM 用户或角色上，并将 `skill-bucket-bedrock` 替换为你的实际存储桶名称：
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject",
+        "s3:HeadObject",
+        "s3:ListBucket"
+      ],
+      "Resource": [
+        "arn:aws:s3:::skill-bucket-bedrock",
+        "arn:aws:s3:::skill-bucket-bedrock/*"
+      ]
+    }
+  ]
+}
+```
+
+| Action | 用途 |
+|--------|------|
+| `s3:ListBucket` | `LoadAllSkills` — 列出存储桶中的技能文件 |
+| `s3:GetObject` | `LoadSkill` — 下载技能 Markdown 内容 |
+| `s3:HeadObject` | `SkillExists` — 检查技能是否已存在 |
+| `s3:PutObject` | `UploadSkill` — 上传新技能或覆盖占位文件 |
+| `s3:DeleteObject` | `DeleteSkill` — 删除技能文件（创建失败时清理占位） |
+
+> **注意**：`Resource` 需要两条记录 — 存储桶本身（`arn:aws:s3:::bucket`，用于 `ListBucket`）和存储桶内对象（`arn:aws:s3:::bucket/*`，用于对象级操作）。
+
 ### 安全配置
 
 | 变量 | 说明 | 必填 |

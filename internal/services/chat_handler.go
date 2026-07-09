@@ -336,6 +336,8 @@ func (handler *ChatHandler) processUserChatStream(
 	var (
 		selectedSkill  *models.SkillDefinition
 		matchedResults []models.RetrievalResult
+
+		llmStart = time.Now()
 	)
 
 	start := time.Now()
@@ -417,7 +419,6 @@ func (handler *ChatHandler) processUserChatStream(
 	}
 	handler.sendThinking(connectionID, thinkingMsg, incomingMessage.SkillsId)
 
-	llmStart := time.Now()
 	thinkingMsg2 := models.SystemThinkingData{
 		Phase:         "llm_generation",
 		SkillMatches:  skillMatches,
