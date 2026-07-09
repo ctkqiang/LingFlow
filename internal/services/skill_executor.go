@@ -22,7 +22,7 @@ type SkillExecutionError struct {
 }
 
 func (executionError *SkillExecutionError) Error() string {
-	return fmt.Sprintf("skill execution failed [skill=%s phase=%s]: %v", executionError.SkillID, executionError.Phase, executionError.Cause)
+	return fmt.Sprintf("技能执行失败 [skill=%s phase=%s]: %v", executionError.SkillID, executionError.Phase, executionError.Cause)
 }
 
 func (executionError *SkillExecutionError) Unwrap() error {

@@ -237,11 +237,11 @@ func RetryWithBackoff(name string, maxAttempts int, backoff time.Duration, fn fu
 			return nil
 		} else {
 			lastError = err
-			Warn("%s attempt %d/%d failed: %v — retrying in %v", name, attemptIndex+1, maxAttempts, err, backoff)
+			Warn("%s 第 %d/%d 次尝试失败: %v — %v 后重试", name, attemptIndex+1, maxAttempts, err, backoff)
 			time.Sleep(backoff)
 		}
 	}
-	return fmt.Errorf("%s: exhausted %d retries: %w", name, maxAttempts, lastError)
+	return fmt.Errorf("%s: 已耗尽 %d 次重试: %w", name, maxAttempts, lastError)
 }
 
 func init() {

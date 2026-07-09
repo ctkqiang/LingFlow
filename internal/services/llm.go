@@ -186,8 +186,8 @@ func (service *BedrockLLMService) HealthCheck(ctx context.Context) error {
 	utilities.LogStart("BedrockLLMService", "HealthCheck")
 
 	testRequest := LLMRequest{
-		SystemPrompt: "You are a health check assistant.",
-		UserMessage:  "Respond with OK.",
+		SystemPrompt: "你是健康检查助手。",
+		UserMessage:  "请回复 OK。",
 	}
 
 	_, err := service.Generate(ctx, testRequest)
@@ -362,15 +362,15 @@ func buildSkillAugmentedPrompt(basePrompt, skillContext string) string {
 // FormatSkillAsContext 将 SkillDefinition 转换为可注入提示词的上下文字符串。
 func FormatSkillAsContext(skill models.SkillDefinition) string {
 	var contextBuilder strings.Builder
-	contextBuilder.WriteString(fmt.Sprintf("Skill: %s\n", skill.SkillDisplayName))
-	contextBuilder.WriteString(fmt.Sprintf("Description: %s\n", skill.SkillDescription))
+	contextBuilder.WriteString(fmt.Sprintf("技能: %s\n", skill.SkillDisplayName))
+	contextBuilder.WriteString(fmt.Sprintf("描述: %s\n", skill.SkillDescription))
 
 	if skill.MarkdownBody.Instructions != "" {
-		contextBuilder.WriteString(fmt.Sprintf("\nInstructions:\n%s\n", skill.MarkdownBody.Instructions))
+		contextBuilder.WriteString(fmt.Sprintf("\n指令:\n%s\n", skill.MarkdownBody.Instructions))
 	}
 
 	if len(skill.MarkdownBody.Rules) > 0 {
-		contextBuilder.WriteString("\nRules:\n")
+		contextBuilder.WriteString("\n规则:\n")
 		for ruleIndex, rule := range skill.MarkdownBody.Rules {
 			contextBuilder.WriteString(fmt.Sprintf("  %d. %s\n", ruleIndex+1, rule))
 		}
