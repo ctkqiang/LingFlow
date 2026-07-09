@@ -40,22 +40,3 @@ type HeartbeatChatData struct {
 	Timestamp time.Time `json:"timestamp"` // 发送时间戳
 	Latency   int64     `json:"latency,omitempty"` // 往返延迟（毫秒），仅 pong 时返回
 }
-
-func (m *WSMessage) MarshalJSON() ([]byte, error) {
-	type Alias WSMessage
-	return json.Marshal(&struct {
-		*Alias
-	}{
-		Alias: (*Alias)(m),
-	})
-}
-
-func (m *WSMessage) UnmarshalJSON(data []byte) error {
-	type Alias WSMessage
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(m),
-	}
-	return json.Unmarshal(data, aux)
-}

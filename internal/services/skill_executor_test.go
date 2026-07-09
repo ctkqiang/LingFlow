@@ -579,7 +579,6 @@ func TestFormatSkillAsContext(t *testing.T) {
 // --- 端到端管道测试 ---
 
 func TestEndToEnd_SkillSelectionThroughResponseDelivery(t *testing.T) {
-	// 步骤 1: 注册多个技能
 	registry := NewSkillRegistry()
 
 	skills := []models.SkillDefinition{
@@ -601,7 +600,6 @@ func TestEndToEnd_SkillSelectionThroughResponseDelivery(t *testing.T) {
 		}
 	}
 
-	// 步骤 2: 创建验证技能上下文注入的模拟 LLM
 	var capturedRequest LLMRequest
 	mock := &mockLLMService{
 		generateFunc: func(ctx context.Context, request LLMRequest) (LLMResponse, error) {
@@ -616,7 +614,6 @@ func TestEndToEnd_SkillSelectionThroughResponseDelivery(t *testing.T) {
 		},
 	}
 
-	// 步骤 3: 创建处理器并处理消息
 	handler := NewChatHandler(registry, mock)
 
 	userData := models.UserChatData{
@@ -638,7 +635,6 @@ func TestEndToEnd_SkillSelectionThroughResponseDelivery(t *testing.T) {
 		t.Fatalf("端到端: HandleIncomingMessage 处理失败: %v", err)
 	}
 
-	// 步骤 4: 验证技能已被选择并注入
 	if capturedRequest.SkillID != "billing/refund" {
 		t.Fatalf("端到端: 期望技能 billing/refund，实际得到 %q", capturedRequest.SkillID)
 	}
@@ -651,7 +647,6 @@ func TestEndToEnd_SkillSelectionThroughResponseDelivery(t *testing.T) {
 		t.Fatal("端到端: 期望技能上下文包含技能名称")
 	}
 
-	// 步骤 5: 验证响应符合 WSMessage 结构
 	var response models.WSMessage
 	if err := json.Unmarshal(responseBytes, &response); err != nil {
 		t.Fatalf("端到端: 反序列化响应失败: %v", err)
@@ -665,7 +660,6 @@ func TestEndToEnd_SkillSelectionThroughResponseDelivery(t *testing.T) {
 		t.Fatalf("端到端: 期望 skills_id 为 'billing/refund'，实际得到 %q", response.SkillsId)
 	}
 
-	// 步骤 6: 校验响应消息内容
 	var sysData models.SystemChatData
 	if err := json.Unmarshal(response.Data, &sysData); err != nil {
 		t.Fatalf("端到端: 反序列化系统数据失败: %v", err)
@@ -679,7 +673,6 @@ func TestEndToEnd_SkillSelectionThroughResponseDelivery(t *testing.T) {
 		t.Fatalf("端到端: 响应消息不符合预期: %q", sysData.Message)
 	}
 
-	// 步骤 7: 验证响应通过 WSMessage 校验
 	if err := ValidateWSMessage(response); err != nil {
 		t.Fatalf("端到端: 响应未通过校验: %v", err)
 	}

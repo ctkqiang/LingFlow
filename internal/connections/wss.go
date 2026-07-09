@@ -2,6 +2,7 @@ package connections
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"ling_flow/internal/events"
 	"ling_flow/internal/models"
@@ -575,7 +576,7 @@ func RegisterWebSocketHandlers(
 
 func isHeartbeatMessage(payload []byte) bool {
 	var msg models.WSMessage
-	if err := msg.UnmarshalJSON(payload); err != nil {
+	if err := json.Unmarshal(payload, &msg); err != nil {
 		return false
 	}
 	return msg.Type == models.HeartbeatChat
@@ -587,13 +588,13 @@ func handleHeartbeatMessage(
 	payload []byte,
 ) {
 	var msg models.WSMessage
-	if err := msg.UnmarshalJSON(payload); err != nil {
+	if err := json.Unmarshal(payload, &msg); err != nil {
 		utilities.Error("解析心跳消息失败 [%s]: %v", connectionIdentifier, err)
 		return
 	}
 
 	var heartbeatData models.HeartbeatChatData
-	if err := msg.Data.Unmarshal(&heartbeatData); err != nil {
+	if err := json.Unmarshal(msg.Data, &heartbeatData); err != nil {
 		utilities.Error("解析心跳数据失败 [%s]: %v", connectionIdentifier, err)
 		return
 	}
@@ -615,7 +616,7 @@ func buildHeartbeatPing(nonce string) ([]byte, error) {
 		Timestamp: time.Now(),
 	}
 
-	dataBytes, err := heartbeatData.MarshalJSON()
+	dataBytes, err := json.Marshal(heartbeatData)
 	if err != nil {
 		return nil, err
 	}
@@ -626,7 +627,7 @@ func buildHeartbeatPing(nonce string) ([]byte, error) {
 		Timestamp: time.Now(),
 	}
 
-	return msg.MarshalJSON()
+	return json.Marshal(msg)
 }
 
 func buildHeartbeatPong(nonce string, pingSentAt time.Time) ([]byte, error) {
@@ -638,7 +639,7 @@ func buildHeartbeatPong(nonce string, pingSentAt time.Time) ([]byte, error) {
 		Latency:   latency,
 	}
 
-	dataBytes, err := heartbeatData.MarshalJSON()
+	dataBytes, err := json.Marshal(heartbeatData)
 	if err != nil {
 		return nil, err
 	}
@@ -649,7 +650,7 @@ func buildHeartbeatPong(nonce string, pingSentAt time.Time) ([]byte, error) {
 		Timestamp: time.Now(),
 	}
 
-	return msg.MarshalJSON()
+	return json.Marshal(msg)
 }
 
 func chatConnectionIdentifierFromRequest(httpRequest *http.Request) (string, error) {

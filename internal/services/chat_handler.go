@@ -44,20 +44,17 @@ func (handler *ChatHandler) HandleIncomingMessage(
 	start := time.Now()
 	utilities.LogStart("ChatHandler", "HandleIncomingMessage")
 
-	// 步骤 1: 解析传入的 WSMessage
 	incomingMessage, err := handler.parseIncomingMessage(rawPayload)
 	if err != nil {
 		errorResponse := handler.buildErrorResponse("parse_error", err.Error())
 		return json.Marshal(errorResponse)
 	}
 
-	// 步骤 2: 校验传入消息的结构
 	if err := ValidateWSMessage(incomingMessage); err != nil {
 		errorResponse := handler.buildErrorResponse("validation_error", err.Error())
 		return json.Marshal(errorResponse)
 	}
 
-	// 步骤 3: 根据消息类型路由
 	var responseMessage models.WSMessage
 
 	switch incomingMessage.Type {
@@ -77,7 +74,6 @@ func (handler *ChatHandler) HandleIncomingMessage(
 		return json.Marshal(errorResponse)
 	}
 
-	// 步骤 4: 序列化响应
 	responseBytes, err := json.Marshal(responseMessage)
 	if err != nil {
 		return nil, fmt.Errorf("序列化响应消息失败: %w", err)
@@ -152,6 +148,40 @@ func (handler *ChatHandler) handleSystemChat(
 		Type:      models.SystemChat,
 		Data:      json.RawMessage(dataBytes),
 		SkillsId:  message.SkillsId,
+		Timestamp: time.Now(),
+	}, nil
+}
+
+// handleHeartbeat 处理 heartbeat_chat 类型的消息。
+// 收到 ping 时返回 pong，包含往返延迟。
+func (handler *ChatHandler) handleHeartbeat(
+	message models.WSMessage,
+) (models.WSMessage, error) {
+	var heartbeatData models.HeartbeatChatData
+	if err := json.Unmarshal(message.Data, &heartbeatData); err != nil {
+		return models.WSMessage{}, fmt.Errorf("解析心跳数据失败: %w", err)
+	}
+
+	if heartbeatData.Action != "ping" {
+		return models.WSMessage{}, fmt.Errorf("heartbeat_chat 只支持 ping 动作")
+	}
+
+	latency := time.Since(heartbeatData.Timestamp).Milliseconds()
+	pongData := models.HeartbeatChatData{
+		Action:    "pong",
+		Nonce:     heartbeatData.Nonce,
+		Timestamp: time.Now(),
+		Latency:   latency,
+	}
+
+	dataBytes, err := json.Marshal(pongData)
+	if err != nil {
+		return models.WSMessage{}, fmt.Errorf("序列化 pong 数据失败: %w", err)
+	}
+
+	return models.WSMessage{
+		Type:      models.HeartbeatChat,
+		Data:      json.RawMessage(dataBytes),
 		Timestamp: time.Now(),
 	}, nil
 }

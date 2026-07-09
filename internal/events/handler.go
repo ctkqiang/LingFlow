@@ -29,20 +29,17 @@ func (handler *ChatCommandHandler) Handle(
 	ctx context.Context,
 	cmd Command,
 ) ([]DomainEvent, error) {
-	// 步骤 1: 确定事件流标识并加载事件历史
 	streamID := ChatStreamID(cmd.AggregateID)
 	eventHistory, loadError := handler.eventStore.LoadStream(ctx, streamID)
 	if loadError != nil {
 		return nil, fmt.Errorf("加载事件流失败 [%s]: %w", streamID, loadError)
 	}
 
-	// 步骤 2: 重建聚合根状态
 	aggregate, rebuildError := RebuildChatSessionAggregate(eventHistory)
 	if rebuildError != nil {
 		return nil, fmt.Errorf("重建聚合根失败 [%s]: %w", cmd.AggregateID, rebuildError)
 	}
 
-	// 步骤 3: 将命令交给聚合根处理
 	var pendingEvents []DomainEvent
 	var handleError error
 
@@ -61,7 +58,6 @@ func (handler *ChatCommandHandler) Handle(
 		return nil, fmt.Errorf("处理命令失败 [%s]: %w", cmd.CommandType, handleError)
 	}
 
-	// 步骤 4: 逐个追加事件到 EventStore
 	var persistedEvents []DomainEvent
 	for _, pendingEvent := range pendingEvents {
 		persistedEvent, appendError := handler.eventStore.Append(ctx, pendingEvent)
@@ -71,7 +67,6 @@ func (handler *ChatCommandHandler) Handle(
 		persistedEvents = append(persistedEvents, persistedEvent)
 	}
 
-	// 步骤 5: 通过 EventBus 发布所有已持久化事件
 	if handler.eventBus != nil && len(persistedEvents) > 0 {
 		if publishError := handler.eventBus.Publish(ctx, persistedEvents...); publishError != nil {
 			return nil, fmt.Errorf("发布事件失败: %w", publishError)

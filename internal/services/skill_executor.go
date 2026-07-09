@@ -76,16 +76,13 @@ func (executor *SkillExecutor) Execute(ctx context.Context, userMessage models.U
 	start := time.Now()
 	utilities.LogStart("SkillExecutor", "Execute")
 
-	// 阶段 1: 技能检索
 	skill, skillMeta, err := executor.retrieveSkill(userMessage.Message)
 	if err != nil {
 		utilities.LogError("SkillExecutor", "Execute", err, time.Since(start), "phase=retrieval")
 	}
 
-	// 阶段 2: 构建 LLM 请求
 	llmRequest := executor.buildLLMRequest(userMessage.Message, skill)
 
-	// 阶段 3: LLM 生成
 	llmResponse, err := executor.generateResponse(ctx, llmRequest)
 	if err != nil {
 		return ExecutionResult{}, NewSkillExecutionError(
@@ -93,7 +90,6 @@ func (executor *SkillExecutor) Execute(ctx context.Context, userMessage models.U
 		)
 	}
 
-	// 阶段 4: 格式化为 WSMessage
 	wsMessage, err := executor.formatAsWSMessage(llmResponse)
 	if err != nil {
 		return ExecutionResult{}, NewSkillExecutionError(
