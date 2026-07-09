@@ -9,9 +9,9 @@ import (
 	"time"
 )
 
-const defaultSystemPrompt = "You are LingFlow, an intelligent assistant. " +
-	"Answer the user's question accurately and helpfully. " +
-	"If a skill context is provided, use it to guide your response."
+const defaultSystemPrompt = "你是 LingFlow，一个智能助手。" +
+	"请准确且有帮助地回答用户的问题。" +
+	"如果提供了技能上下文，请使用它来指导你的回答。"
 
 // SkillExecutionError 表示技能执行过程中的结构化错误。
 type SkillExecutionError struct {
@@ -191,7 +191,7 @@ func (executor *SkillExecutor) retrieveSkill(userQuery string) (*models.SkillDef
 	}
 
 	utilities.LogProgress("SkillExecutor", "retrieveSkill",
-		fmt.Sprintf("Selected skill: %s (%s)", skill.SkillDisplayName, skill.SkillIdentifier),
+		fmt.Sprintf("已选择技能: %s (%s)", skill.SkillDisplayName, skill.SkillIdentifier),
 	)
 
 	return skill, meta, nil
@@ -266,7 +266,7 @@ func ValidateWSMessage(msg models.WSMessage) error {
 		return fmt.Errorf("消息类型为必填项")
 	}
 
-	if msg.Type != models.UserChat && msg.Type != models.SystemChat {
+	if msg.Type != models.UserChat && msg.Type != models.SystemChat && msg.Type != models.HeartbeatChat {
 		return fmt.Errorf("无效的消息类型: %s", msg.Type)
 	}
 
@@ -298,6 +298,17 @@ func ValidateWSMessage(msg models.WSMessage) error {
 		}
 		if sysData.Event == "" {
 			return fmt.Errorf("system_chat 事件类型为必填项")
+		}
+	case models.HeartbeatChat:
+		var heartbeatData models.HeartbeatChatData
+		if err := json.Unmarshal(msg.Data, &heartbeatData); err != nil {
+			return fmt.Errorf("heartbeat_chat 数据不符合 HeartbeatChatData 结构: %w", err)
+		}
+		if heartbeatData.Action != "ping" && heartbeatData.Action != "pong" {
+			return fmt.Errorf("heartbeat_chat 动作类型必须为 ping 或 pong")
+		}
+		if heartbeatData.Nonce == "" {
+			return fmt.Errorf("heartbeat_chat nonce 为必填项")
 		}
 	}
 

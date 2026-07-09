@@ -19,7 +19,7 @@ func (m *mockLLMService) Generate(ctx context.Context, request LLMRequest) (LLMR
 		return m.generateFunc(ctx, request)
 	}
 	return LLMResponse{
-		Content:      "Mock response for: " + request.UserMessage,
+		Content:      "模拟响应: " + request.UserMessage,
 		FinishReason: "stop",
 		TokensUsed:   42,
 		SkillID:      request.SkillID,
@@ -39,15 +39,15 @@ func newTestSkillDefinition(id, name, description, category string, keywords []s
 		SearchKeywords:   keywords,
 		SkillCategory:    category,
 		MarkdownBody: models.SkillsMarkdownBody{
-			Instructions: fmt.Sprintf("Instructions for %s skill.", name),
-			Rules:        []string{"Rule 1: Be accurate", "Rule 2: Be concise"},
+			Instructions: fmt.Sprintf("%s 技能的使用说明。", name),
+			Rules:        []string{"规则 1: 保持准确", "规则 2: 保持简洁"},
 		},
-		SchemaVersion:       1,
+		SchemaVersion:        1,
 		LastUpdatedTimestamp: time.Now(),
 	}
 }
 
-// --- SkillRegistry Tests ---
+// --- 技能注册中心测试 ---
 
 func TestSkillRegistry_RegisterAndRetrieve(t *testing.T) {
 	registry := NewSkillRegistry()
@@ -59,19 +59,19 @@ func TestSkillRegistry_RegisterAndRetrieve(t *testing.T) {
 	)
 
 	if err := registry.RegisterSkill(skill); err != nil {
-		t.Fatalf("RegisterSkill failed: %v", err)
+		t.Fatalf("注册技能失败: %v", err)
 	}
 
 	if registry.SkillCount() != 1 {
-		t.Fatalf("expected 1 skill, got %d", registry.SkillCount())
+		t.Fatalf("期望 1 个技能，实际得到 %d 个", registry.SkillCount())
 	}
 
 	retrieved, exists := registry.GetSkill("billing/refund")
 	if !exists {
-		t.Fatal("expected skill to exist")
+		t.Fatal("期望技能存在")
 	}
 	if retrieved.SkillDisplayName != "Refund Status" {
-		t.Fatalf("expected display name 'Refund Status', got %q", retrieved.SkillDisplayName)
+		t.Fatalf("期望显示名称为 'Refund Status'，实际得到 %q", retrieved.SkillDisplayName)
 	}
 }
 
@@ -84,17 +84,17 @@ func TestSkillRegistry_RegisterValidation(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name:    "empty identifier",
+			name:    "标识符为空",
 			skill:   models.SkillDefinition{SkillDisplayName: "Test"},
 			wantErr: true,
 		},
 		{
-			name:    "empty display name",
+			name:    "显示名称为空",
 			skill:   models.SkillDefinition{SkillIdentifier: "test"},
 			wantErr: true,
 		},
 		{
-			name: "valid skill",
+			name: "有效技能",
 			skill: newTestSkillDefinition(
 				"test/valid", "Valid Skill", "A valid test skill", "test", nil,
 			),
@@ -106,7 +106,7 @@ func TestSkillRegistry_RegisterValidation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			err := registry.RegisterSkill(tt.skill)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("RegisterSkill() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("RegisterSkill() 错误 = %v, 期望错误 %v", err, tt.wantErr)
 			}
 		})
 	}
@@ -119,15 +119,15 @@ func TestSkillRegistry_UnregisterSkill(t *testing.T) {
 	_ = registry.RegisterSkill(skill)
 
 	if !registry.UnregisterSkill("test/remove") {
-		t.Fatal("expected UnregisterSkill to return true")
+		t.Fatal("期望 UnregisterSkill 返回 true")
 	}
 
 	if registry.SkillCount() != 0 {
-		t.Fatalf("expected 0 skills after unregister, got %d", registry.SkillCount())
+		t.Fatalf("注销后期望 0 个技能，实际得到 %d 个", registry.SkillCount())
 	}
 
 	if registry.UnregisterSkill("nonexistent") {
-		t.Fatal("expected UnregisterSkill to return false for nonexistent skill")
+		t.Fatal("期望对不存在的技能 UnregisterSkill 返回 false")
 	}
 }
 
@@ -154,24 +154,24 @@ func TestSkillRegistry_RetrieveSkills(t *testing.T) {
 
 	for _, s := range skills {
 		if err := registry.RegisterSkill(s); err != nil {
-			t.Fatalf("RegisterSkill failed: %v", err)
+			t.Fatalf("注册技能失败: %v", err)
 		}
 	}
 
 	results := registry.RetrieveSkills("I want a refund for my payment")
 	if len(results) == 0 {
-		t.Fatal("expected at least one result for refund query")
+		t.Fatal("退款查询期望至少返回一个结果")
 	}
 	if results[0].Meta.SkillIdentifier != "billing/refund" {
-		t.Fatalf("expected top result to be billing/refund, got %s", results[0].Meta.SkillIdentifier)
+		t.Fatalf("期望排名第一的结果为 billing/refund，实际得到 %s", results[0].Meta.SkillIdentifier)
 	}
 
 	results = registry.RetrieveSkills("help me with my support ticket")
 	if len(results) == 0 {
-		t.Fatal("expected at least one result for support query")
+		t.Fatal("客服查询期望至少返回一个结果")
 	}
 	if results[0].Meta.SkillIdentifier != "support/ticket" {
-		t.Fatalf("expected top result to be support/ticket, got %s", results[0].Meta.SkillIdentifier)
+		t.Fatalf("期望排名第一的结果为 support/ticket，实际得到 %s", results[0].Meta.SkillIdentifier)
 	}
 }
 
@@ -187,15 +187,15 @@ func TestSkillRegistry_RetrieveBestSkill(t *testing.T) {
 
 	best := registry.RetrieveBestSkill("refund my payment please")
 	if best == nil {
-		t.Fatal("expected a best skill match")
+		t.Fatal("期望匹配到最佳技能")
 	}
 	if best.SkillIdentifier != "billing/refund" {
-		t.Fatalf("expected billing/refund, got %s", best.SkillIdentifier)
+		t.Fatalf("期望 billing/refund，实际得到 %s", best.SkillIdentifier)
 	}
 
 	noMatch := registry.RetrieveBestSkill("xyzzy foobar baz")
 	if noMatch != nil {
-		t.Fatalf("expected no match for gibberish query, got %s", noMatch.SkillIdentifier)
+		t.Fatalf("期望无意义查询不匹配任何技能，实际得到 %s", noMatch.SkillIdentifier)
 	}
 }
 
@@ -207,7 +207,7 @@ func TestSkillRegistry_ListSkills(t *testing.T) {
 
 	list := registry.ListSkills()
 	if len(list) != 2 {
-		t.Fatalf("expected 2 skills in list, got %d", len(list))
+		t.Fatalf("期望列表中有 2 个技能，实际得到 %d 个", len(list))
 	}
 }
 
@@ -229,20 +229,19 @@ func TestSkillExecutor_Execute_WithSkillMatch(t *testing.T) {
 		UserID:  "user-123",
 		Message: "I need a refund for my payment",
 	})
-
 	if err != nil {
-		t.Fatalf("Execute failed: %v", err)
+		t.Fatalf("Execute 执行失败: %v", err)
 	}
 
 	if result.SkillUsed == nil {
-		t.Fatal("expected a skill to be used")
+		t.Fatal("期望使用了某个技能")
 	}
 	if result.SkillUsed.SkillIdentifier != "billing/refund" {
-		t.Fatalf("expected billing/refund skill, got %s", result.SkillUsed.SkillIdentifier)
+		t.Fatalf("期望使用 billing/refund 技能，实际得到 %s", result.SkillUsed.SkillIdentifier)
 	}
 
 	if result.WSMessage.Type != models.SystemChat {
-		t.Fatalf("expected SystemChat type, got %s", result.WSMessage.Type)
+		t.Fatalf("期望 SystemChat 类型，实际得到 %s", result.WSMessage.Type)
 	}
 }
 
@@ -256,17 +255,16 @@ func TestSkillExecutor_Execute_WithoutSkillMatch(t *testing.T) {
 		UserID:  "user-456",
 		Message: "Hello, how are you?",
 	})
-
 	if err != nil {
-		t.Fatalf("Execute failed: %v", err)
+		t.Fatalf("Execute 执行失败: %v", err)
 	}
 
 	if result.SkillUsed != nil {
-		t.Fatal("expected no skill to be used for generic greeting")
+		t.Fatal("期望通用问候不使用任何技能")
 	}
 
 	if result.WSMessage.Type != models.SystemChat {
-		t.Fatalf("expected SystemChat type, got %s", result.WSMessage.Type)
+		t.Fatalf("期望 SystemChat 类型，实际得到 %s", result.WSMessage.Type)
 	}
 }
 
@@ -286,13 +284,12 @@ func TestSkillExecutor_ExecuteWithSkill_Explicit(t *testing.T) {
 		UserID:  "user-789",
 		Message: "Create a ticket",
 	}, "support/ticket")
-
 	if err != nil {
-		t.Fatalf("ExecuteWithSkill failed: %v", err)
+		t.Fatalf("ExecuteWithSkill 执行失败: %v", err)
 	}
 
 	if result.SkillUsed == nil || result.SkillUsed.SkillIdentifier != "support/ticket" {
-		t.Fatal("expected support/ticket skill to be used")
+		t.Fatal("期望使用 support/ticket 技能")
 	}
 }
 
@@ -306,15 +303,15 @@ func TestSkillExecutor_ExecuteWithSkill_NotFound(t *testing.T) {
 	}, "nonexistent/skill")
 
 	if err == nil {
-		t.Fatal("expected error for nonexistent skill")
+		t.Fatal("期望对不存在的技能返回错误")
 	}
 
 	execErr, ok := err.(*SkillExecutionError)
 	if !ok {
-		t.Fatalf("expected SkillExecutionError, got %T", err)
+		t.Fatalf("期望 SkillExecutionError 类型，实际得到 %T", err)
 	}
 	if execErr.Phase != "lookup" {
-		t.Fatalf("expected phase 'lookup', got %q", execErr.Phase)
+		t.Fatalf("期望阶段为 'lookup'，实际得到 %q", execErr.Phase)
 	}
 }
 
@@ -322,25 +319,25 @@ func TestSkillExecutor_Execute_LLMFailure(t *testing.T) {
 	registry := NewSkillRegistry()
 	failingMock := &mockLLMService{
 		generateFunc: func(ctx context.Context, request LLMRequest) (LLMResponse, error) {
-			return LLMResponse{}, fmt.Errorf("LLM service unavailable")
+			return LLMResponse{}, fmt.Errorf("LLM 服务不可用")
 		},
 	}
 	executor := NewSkillExecutor(registry, failingMock)
 
 	_, err := executor.Execute(context.Background(), models.UserChatData{
-		Message: "test message",
+		Message: "测试消息",
 	})
 
 	if err == nil {
-		t.Fatal("expected error when LLM fails")
+		t.Fatal("期望 LLM 失败时返回错误")
 	}
 
 	execErr, ok := err.(*SkillExecutionError)
 	if !ok {
-		t.Fatalf("expected SkillExecutionError, got %T", err)
+		t.Fatalf("期望 SkillExecutionError 类型，实际得到 %T", err)
 	}
 	if execErr.Phase != "generation" {
-		t.Fatalf("expected phase 'generation', got %q", execErr.Phase)
+		t.Fatalf("期望阶段为 'generation'，实际得到 %q", execErr.Phase)
 	}
 }
 
@@ -357,7 +354,7 @@ func TestValidateWSMessage_Valid(t *testing.T) {
 	}
 
 	if err := ValidateWSMessage(msg); err != nil {
-		t.Fatalf("expected valid message, got error: %v", err)
+		t.Fatalf("期望消息有效，实际得到错误: %v", err)
 	}
 }
 
@@ -368,7 +365,7 @@ func TestValidateWSMessage_EmptyType(t *testing.T) {
 	}
 
 	if err := ValidateWSMessage(msg); err == nil {
-		t.Fatal("expected error for empty type")
+		t.Fatal("期望类型为空时返回错误")
 	}
 }
 
@@ -380,7 +377,7 @@ func TestValidateWSMessage_InvalidType(t *testing.T) {
 	}
 
 	if err := ValidateWSMessage(msg); err == nil {
-		t.Fatal("expected error for invalid type")
+		t.Fatal("期望无效类型时返回错误")
 	}
 }
 
@@ -391,7 +388,7 @@ func TestValidateWSMessage_EmptyData(t *testing.T) {
 	}
 
 	if err := ValidateWSMessage(msg); err == nil {
-		t.Fatal("expected error for empty data")
+		t.Fatal("期望数据为空时返回错误")
 	}
 }
 
@@ -405,7 +402,7 @@ func TestValidateWSMessage_ZeroTimestamp(t *testing.T) {
 	}
 
 	if err := ValidateWSMessage(msg); err == nil {
-		t.Fatal("expected error for zero timestamp")
+		t.Fatal("期望时间戳为零值时返回错误")
 	}
 }
 
@@ -420,7 +417,7 @@ func TestValidateWSMessage_UserChat_EmptyMessage(t *testing.T) {
 	}
 
 	if err := ValidateWSMessage(msg); err == nil {
-		t.Fatal("expected error for empty user message")
+		t.Fatal("期望用户消息为空时返回错误")
 	}
 }
 
@@ -435,11 +432,11 @@ func TestValidateWSMessage_SystemChat_EmptyEvent(t *testing.T) {
 	}
 
 	if err := ValidateWSMessage(msg); err == nil {
-		t.Fatal("expected error for empty system event")
+		t.Fatal("期望系统事件为空时返回错误")
 	}
 }
 
-// --- ChatHandler Tests ---
+// --- 聊天处理器测试 ---
 
 func TestChatHandler_HandleUserChat(t *testing.T) {
 	registry := NewSkillRegistry()
@@ -468,29 +465,29 @@ func TestChatHandler_HandleUserChat(t *testing.T) {
 
 	responseBytes, err := handler.HandleIncomingMessage(context.Background(), incomingBytes)
 	if err != nil {
-		t.Fatalf("HandleIncomingMessage failed: %v", err)
+		t.Fatalf("HandleIncomingMessage 处理失败: %v", err)
 	}
 
 	var response models.WSMessage
 	if err := json.Unmarshal(responseBytes, &response); err != nil {
-		t.Fatalf("failed to unmarshal response: %v", err)
+		t.Fatalf("反序列化响应失败: %v", err)
 	}
 
 	if response.Type != models.SystemChat {
-		t.Fatalf("expected SystemChat response, got %s", response.Type)
+		t.Fatalf("期望 SystemChat 响应，实际得到 %s", response.Type)
 	}
 
 	var sysData models.SystemChatData
 	if err := json.Unmarshal(response.Data, &sysData); err != nil {
-		t.Fatalf("failed to unmarshal system data: %v", err)
+		t.Fatalf("反序列化系统数据失败: %v", err)
 	}
 
 	if sysData.Event != "llm_response" {
-		t.Fatalf("expected event 'llm_response', got %q", sysData.Event)
+		t.Fatalf("期望事件为 'llm_response'，实际得到 %q", sysData.Event)
 	}
 
 	if sysData.Message == "" {
-		t.Fatal("expected non-empty response message")
+		t.Fatal("期望响应消息非空")
 	}
 }
 
@@ -500,7 +497,7 @@ func TestChatHandler_HandleSystemChat(t *testing.T) {
 
 	sysData := models.SystemChatData{
 		Event:   "user_joined",
-		Message: "A new user has joined",
+		Message: "新用户已加入",
 	}
 	dataBytes, _ := json.Marshal(sysData)
 
@@ -513,16 +510,16 @@ func TestChatHandler_HandleSystemChat(t *testing.T) {
 
 	responseBytes, err := handler.HandleIncomingMessage(context.Background(), incomingBytes)
 	if err != nil {
-		t.Fatalf("HandleIncomingMessage failed: %v", err)
+		t.Fatalf("HandleIncomingMessage 处理失败: %v", err)
 	}
 
 	var response models.WSMessage
 	if err := json.Unmarshal(responseBytes, &response); err != nil {
-		t.Fatalf("failed to unmarshal response: %v", err)
+		t.Fatalf("反序列化响应失败: %v", err)
 	}
 
 	if response.Type != models.SystemChat {
-		t.Fatalf("expected SystemChat response, got %s", response.Type)
+		t.Fatalf("期望 SystemChat 响应，实际得到 %s", response.Type)
 	}
 }
 
@@ -532,22 +529,22 @@ func TestChatHandler_InvalidPayload(t *testing.T) {
 
 	responseBytes, err := handler.HandleIncomingMessage(context.Background(), []byte("not json"))
 	if err != nil {
-		t.Fatalf("expected error response in payload, not Go error: %v", err)
+		t.Fatalf("期望错误在载荷中返回，而非 Go 错误: %v", err)
 	}
 
 	var response models.WSMessage
 	if err := json.Unmarshal(responseBytes, &response); err != nil {
-		t.Fatalf("failed to unmarshal error response: %v", err)
+		t.Fatalf("反序列化错误响应失败: %v", err)
 	}
 
 	if response.Type != models.SystemChat {
-		t.Fatalf("expected SystemChat error response, got %s", response.Type)
+		t.Fatalf("期望 SystemChat 错误响应，实际得到 %s", response.Type)
 	}
 
 	var sysData models.SystemChatData
 	_ = json.Unmarshal(response.Data, &sysData)
 	if sysData.Event != "parse_error" {
-		t.Fatalf("expected parse_error event, got %q", sysData.Event)
+		t.Fatalf("期望 parse_error 事件，实际得到 %q", sysData.Event)
 	}
 }
 
@@ -563,26 +560,26 @@ func TestFormatSkillAsContext(t *testing.T) {
 	context := FormatSkillAsContext(skill)
 
 	if context == "" {
-		t.Fatal("expected non-empty context string")
+		t.Fatal("期望上下文字符串非空")
 	}
 
 	if !containsSubstring(context, "Format Test") {
-		t.Fatal("expected context to contain skill display name")
+		t.Fatal("期望上下文包含技能显示名称")
 	}
 
-	if !containsSubstring(context, "Instructions for Format Test skill") {
-		t.Fatal("expected context to contain instructions")
+	if !containsSubstring(context, "Format Test 技能的使用说明") {
+		t.Fatal("期望上下文包含使用说明")
 	}
 
-	if !containsSubstring(context, "Rule 1") {
-		t.Fatal("expected context to contain rules")
+	if !containsSubstring(context, "规则 1") {
+		t.Fatal("期望上下文包含规则")
 	}
 }
 
 // --- 端到端管道测试 ---
 
 func TestEndToEnd_SkillSelectionThroughResponseDelivery(t *testing.T) {
-	// Step 1: Set up registry with multiple skills
+	// 步骤 1: 注册多个技能
 	registry := NewSkillRegistry()
 
 	skills := []models.SkillDefinition{
@@ -600,7 +597,7 @@ func TestEndToEnd_SkillSelectionThroughResponseDelivery(t *testing.T) {
 
 	for _, s := range skills {
 		if err := registry.RegisterSkill(s); err != nil {
-			t.Fatalf("RegisterSkill failed: %v", err)
+			t.Fatalf("注册技能失败: %v", err)
 		}
 	}
 
@@ -610,7 +607,7 @@ func TestEndToEnd_SkillSelectionThroughResponseDelivery(t *testing.T) {
 		generateFunc: func(ctx context.Context, request LLMRequest) (LLMResponse, error) {
 			capturedRequest = request
 			return LLMResponse{
-				Content:      "Your refund has been processed successfully.",
+				Content:      "您的退款已成功处理。",
 				FinishReason: "stop",
 				TokensUsed:   100,
 				SkillID:      request.SkillID,
@@ -638,53 +635,53 @@ func TestEndToEnd_SkillSelectionThroughResponseDelivery(t *testing.T) {
 
 	responseBytes, err := handler.HandleIncomingMessage(context.Background(), incomingBytes)
 	if err != nil {
-		t.Fatalf("E2E: HandleIncomingMessage failed: %v", err)
+		t.Fatalf("端到端: HandleIncomingMessage 处理失败: %v", err)
 	}
 
-	// Step 4: Verify skill was selected and injected
+	// 步骤 4: 验证技能已被选择并注入
 	if capturedRequest.SkillID != "billing/refund" {
-		t.Fatalf("E2E: expected skill billing/refund, got %q", capturedRequest.SkillID)
+		t.Fatalf("端到端: 期望技能 billing/refund，实际得到 %q", capturedRequest.SkillID)
 	}
 
 	if capturedRequest.SkillContext == "" {
-		t.Fatal("E2E: expected skill context to be injected into LLM request")
+		t.Fatal("端到端: 期望技能上下文已注入到 LLM 请求中")
 	}
 
 	if !containsSubstring(capturedRequest.SkillContext, "Refund Status") {
-		t.Fatal("E2E: expected skill context to contain skill name")
+		t.Fatal("端到端: 期望技能上下文包含技能名称")
 	}
 
-	// Step 5: Verify response conforms to WSMessage structure
+	// 步骤 5: 验证响应符合 WSMessage 结构
 	var response models.WSMessage
 	if err := json.Unmarshal(responseBytes, &response); err != nil {
-		t.Fatalf("E2E: failed to unmarshal response: %v", err)
+		t.Fatalf("端到端: 反序列化响应失败: %v", err)
 	}
 
 	if response.Type != models.SystemChat {
-		t.Fatalf("E2E: expected SystemChat, got %s", response.Type)
+		t.Fatalf("端到端: 期望 SystemChat，实际得到 %s", response.Type)
 	}
 
 	if response.SkillsId != "billing/refund" {
-		t.Fatalf("E2E: expected skills_id 'billing/refund', got %q", response.SkillsId)
+		t.Fatalf("端到端: 期望 skills_id 为 'billing/refund'，实际得到 %q", response.SkillsId)
 	}
 
 	// 步骤 6: 校验响应消息内容
 	var sysData models.SystemChatData
 	if err := json.Unmarshal(response.Data, &sysData); err != nil {
-		t.Fatalf("E2E: failed to unmarshal system data: %v", err)
+		t.Fatalf("端到端: 反序列化系统数据失败: %v", err)
 	}
 
 	if sysData.Event != "llm_response" {
-		t.Fatalf("E2E: expected event 'llm_response', got %q", sysData.Event)
+		t.Fatalf("端到端: 期望事件为 'llm_response'，实际得到 %q", sysData.Event)
 	}
 
-	if sysData.Message != "Your refund has been processed successfully." {
-		t.Fatalf("E2E: unexpected response message: %q", sysData.Message)
+	if sysData.Message != "您的退款已成功处理。" {
+		t.Fatalf("端到端: 响应消息不符合预期: %q", sysData.Message)
 	}
 
 	// 步骤 7: 验证响应通过 WSMessage 校验
 	if err := ValidateWSMessage(response); err != nil {
-		t.Fatalf("E2E: response failed validation: %v", err)
+		t.Fatalf("端到端: 响应未通过校验: %v", err)
 	}
 }
 

@@ -71,7 +71,7 @@ func handleDefaultWebSocketMessage(
 		"message":      messagePayload,
 	})
 	if marshalError != nil {
-		return lambdaResponse(500, "failed to encode response"), marshalError
+		return lambdaResponse(500, "响应编码失败"), marshalError
 	}
 
 	utilities.LogSuccess(
@@ -90,7 +90,7 @@ func lambdaJSONResponse(
 ) (events.APIGatewayProxyResponse, error) {
 	responseBody, marshalError := json.Marshal(responsePayload)
 	if marshalError != nil {
-		return lambdaResponse(500, "failed to encode response"), marshalError
+		return lambdaResponse(500, "响应编码失败"), marshalError
 	}
 	return lambdaResponse(statusCode, string(responseBody)), nil
 }

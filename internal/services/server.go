@@ -157,7 +157,7 @@ func serveWebSocketHTTPServer(
 		defer cancel()
 
 		if shutdownError := websocketHTTPServer.Shutdown(shutdownCtx); shutdownError != nil {
-			return fmt.Errorf("WebSocket server shutdown failed: %w", shutdownError)
+			return fmt.Errorf("WebSocket 服务器关闭失败: %w", shutdownError)
 		}
 		return runtimeContext.Err()
 	case serverError := <-serverErrorChannel:

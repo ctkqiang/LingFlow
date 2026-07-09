@@ -65,6 +65,8 @@ func (handler *ChatHandler) HandleIncomingMessage(
 		responseMessage, err = handler.handleUserChat(ctx, incomingMessage)
 	case models.SystemChat:
 		responseMessage, err = handler.handleSystemChat(incomingMessage)
+	case models.HeartbeatChat:
+		responseMessage, err = handler.handleHeartbeat(incomingMessage)
 	default:
 		err = fmt.Errorf("不支持的消息类型: %s", incomingMessage.Type)
 	}
@@ -138,7 +140,7 @@ func (handler *ChatHandler) handleSystemChat(
 
 	ackData := models.SystemChatData{
 		Event:   "system_ack",
-		Message: fmt.Sprintf("Acknowledged system event: %s", sysData.Event),
+		Message: fmt.Sprintf("已确认系统事件: %s", sysData.Event),
 	}
 
 	dataBytes, err := json.Marshal(ackData)

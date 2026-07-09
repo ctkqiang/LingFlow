@@ -21,7 +21,7 @@ type LogLevel int
 const (
 	DEBUG   LogLevel = iota // 详细诊断信息（仅限本地开发）
 	INFO                    // 通用运行消息（默认级别）
-	WARN                    // recoverable issues, degraded mode
+	WARN                    // 可恢复的问题，降级模式
 	ERROR                   // 需要关注的故障
 	VERBOSE                 // 逐请求指标，审计追踪
 )
@@ -84,7 +84,7 @@ func SetLogLevel(s string) {
 // RegisterErrorCallback 设置每次 ERROR 日志行触发时调用的回调函数。
 func RegisterErrorCallback(cb func(string)) { errorCallback = cb }
 
-// Bold wraps text with ANSI bold escapes for emphasis inside log lines.
+// Bold 使用 ANSI 粗体转义序列包裹文本，用于日志行中的强调。
 func Bold(text string) string { return colorBold + text + colorNoBold }
 
 // Error 输出 ERROR 级别的日志。在 INFO 及以上级别可见。
@@ -96,7 +96,7 @@ func Info(format string, a ...interface{}) { Log(INFO, format, a...) }
 // Debug 输出 DEBUG 级别的日志。仅在 LOG_LEVEL=DEBUG 时可见。
 func Debug(format string, a ...interface{}) { Log(DEBUG, format, a...) }
 
-// Warn emits a WARN-level log.  Only visible at WARN+.
+// Warn 输出 WARN 级别的日志。仅在 WARN 及以上级别可见。
 func Warn(format string, a ...interface{}) { Log(WARN, format, a...) }
 
 // Log 是简单的单行日志记录器。结构化操作日志优先使用 Logf；
@@ -175,7 +175,7 @@ func LogProgress(component, operation, msg string, details ...string) {
 	Logf(component, operation, INFO, "IN_PROGRESS", 0, all...)
 }
 
-// LogStart emits a START marker for an operation.
+// LogStart 为操作输出 START 标记。
 func LogStart(component, operation string) {
 	Logf(component, operation, INFO, "START", 0)
 }
@@ -185,13 +185,13 @@ func LogSuccess(component, operation string, elapsed time.Duration, details ...s
 	Logf(component, operation, INFO, "OK", elapsed, details...)
 }
 
-// LogError emits a FAIL marker with the error message.
+// LogError 输出带有错误信息的 FAIL 标记。
 func LogError(component, operation string, err error, elapsed time.Duration, details ...string) {
 	all := append([]string{"Error=" + err.Error()}, details...)
 	Logf(component, operation, ERROR, "FAIL", elapsed, all...)
 }
 
-// LogWarn emits a WARN marker.
+// LogWarn 输出 WARN 标记。
 func LogWarn(component, operation, msg string, elapsed time.Duration, details ...string) {
 	all := append([]string{"Warn=" + msg}, details...)
 	Logf(component, operation, WARN, "WARN", elapsed, all...)
@@ -211,8 +211,8 @@ func Mask(s string) string {
 	return string(runes[:n]) + "[REDACTED]"
 }
 
-// RetryWithBackoff executes an operation up to maxAttempts times with a
-// fixed backoff between attempts. Returns the last error on exhaustion.
+// RetryWithBackoff 以固定退避间隔执行操作，最多重试 maxAttempts 次。
+// 耗尽重试次数后返回最后一个错误。
 func RetryWithBackoff(name string, maxAttempts int, backoff time.Duration, fn func() error) error {
 	var last error
 	for i := 0; i < maxAttempts; i++ {

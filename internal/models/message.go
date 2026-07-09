@@ -8,8 +8,9 @@ import (
 type MessageType string
 
 const (
-	UserChat   MessageType = "user_chat"   // 用户发送的普通聊天消息
-	SystemChat MessageType = "system_chat" // 系统发送的通知类消息
+	UserChat     MessageType = "user_chat"     // 用户发送的普通聊天消息
+	SystemChat   MessageType = "system_chat"   // 系统发送的通知类消息
+	HeartbeatChat MessageType = "heartbeat_chat" // 心跳消息（ping/pong）
 )
 
 type WSMessage struct {
@@ -30,4 +31,31 @@ type UserChatData struct {
 type SystemChatData struct {
 	Event   string `json:"event"`   // 系统事件类型，如 "user_joined", "user_left", "server_maintenance"
 	Message string `json:"message"` // 系统通知的文本内容
+}
+
+// HeartbeatChatData 定义了 Type 为 "heartbeat_chat" 时，Data 字段的结构
+type HeartbeatChatData struct {
+	Action    string    `json:"action"`    // 动作类型："ping" 或 "pong"
+	Nonce     string    `json:"nonce"`     // 随机标识，用于匹配 ping/pong
+	Timestamp time.Time `json:"timestamp"` // 发送时间戳
+	Latency   int64     `json:"latency,omitempty"` // 往返延迟（毫秒），仅 pong 时返回
+}
+
+func (m *WSMessage) MarshalJSON() ([]byte, error) {
+	type Alias WSMessage
+	return json.Marshal(&struct {
+		*Alias
+	}{
+		Alias: (*Alias)(m),
+	})
+}
+
+func (m *WSMessage) UnmarshalJSON(data []byte) error {
+	type Alias WSMessage
+	aux := &struct {
+		*Alias
+	}{
+		Alias: (*Alias)(m),
+	}
+	return json.Unmarshal(data, aux)
 }

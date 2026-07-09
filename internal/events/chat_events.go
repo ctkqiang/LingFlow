@@ -40,6 +40,14 @@ type LLMGenerationEventData struct {
 	ErrorMessage    string        `json:"error_message,omitempty"`
 }
 
+// HeartbeatEventData 表示心跳事件的数据。
+type HeartbeatEventData struct {
+	ConnectionIdentifier string `json:"connection_identifier"`
+	Nonce               string `json:"nonce"`
+	LatencyMs           int64  `json:"latency_ms,omitempty"`
+	Action              string `json:"action"` // "ping" 或 "pong"
+}
+
 // ChatStreamID 返回 chat aggregate 对应的事件流标识。
 func ChatStreamID(connectionIdentifier string) string {
 	return "chat:" + connectionIdentifier

@@ -4,17 +4,23 @@ import (
 	"context"
 	"fmt"
 	"ling_flow/internal/events"
+	"ling_flow/internal/models"
 	"ling_flow/internal/utilities"
 	"net/http"
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
 
-// MessageHandler 定义处理传入 WebSocket 消息的接口。
-// 实现方接收原始消息字节并返回响应字节。
+const (
+	defaultHeartbeatInterval     = 30 * time.Second
+	defaultHeartbeatTimeout      = 90 * time.Second
+	defaultHeartbeatWriteTimeout = 10 * time.Second
+)
+
 type MessageHandler interface {
 	HandleIncomingMessage(ctx context.Context, rawPayload []byte) ([]byte, error)
 }
@@ -23,36 +29,75 @@ const WebSocketChatEndpointPathPrefix = "/chat/"
 
 type AWSWebSokcetGateway struct{}
 
-type WebsokcetConnectionManager struct {
-	connections map[string]*websocket.Conn
-	eventStore  events.EventStore
-	mu          sync.Mutex
+type connectionState struct {
+	conn           *websocket.Conn
+	lastActiveAt   time.Time
+	heartbeatTicker *time.Ticker
+	pingNonce      string
+	pingSentAt     time.Time
+	mu             sync.Mutex
 }
 
-// NewWebsocketGatewayConnectionManager 创建 WebSocket 连接管理器。
-//
-// 该管理器用于 EC2/本地 server 模式下维护活跃连接；
-// Lambda + API Gateway 模式下连接生命周期由 API Gateway 管理。
+type WebsokcetConnectionManager struct {
+	connections      map[string]*connectionState
+	eventStore       events.EventStore
+	mu               sync.Mutex
+	heartbeatInterval time.Duration
+	heartbeatTimeout  time.Duration
+	writeTimeout      time.Duration
+	ctx               context.Context
+	cancel            context.CancelFunc
+}
+
 func NewWebsocketGatewayConnectionManager() *WebsokcetConnectionManager {
 	return &WebsokcetConnectionManager{
-		connections: make(map[string]*websocket.Conn),
+		connections:      make(map[string]*connectionState),
+		heartbeatInterval: defaultHeartbeatInterval,
+		heartbeatTimeout:  defaultHeartbeatTimeout,
+		writeTimeout:      defaultHeartbeatWriteTimeout,
 	}
 }
 
-// NewEventSourcedWebsocketGatewayConnectionManager 创建带事件存储的连接管理器。
 func NewEventSourcedWebsocketGatewayConnectionManager(
 	eventStore events.EventStore,
 ) *WebsokcetConnectionManager {
-	return &WebsokcetConnectionManager{
-		connections: make(map[string]*websocket.Conn),
-		eventStore:  eventStore,
+	interval := defaultHeartbeatInterval
+	if v := os.Getenv("WSS_HEARTBEAT_INTERVAL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			interval = d
+		}
 	}
+
+	timeout := defaultHeartbeatTimeout
+	if v := os.Getenv("WSS_HEARTBEAT_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			timeout = d
+		}
+	}
+
+	writeTimeout := defaultHeartbeatWriteTimeout
+	if v := os.Getenv("WSS_HEARTBEAT_WRITE_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			writeTimeout = d
+		}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	manager := &WebsokcetConnectionManager{
+		connections:      make(map[string]*connectionState),
+		eventStore:       eventStore,
+		heartbeatInterval: interval,
+		heartbeatTimeout:  timeout,
+		writeTimeout:      writeTimeout,
+		ctx:              ctx,
+		cancel:           cancel,
+	}
+
+	go manager.startHeartbeatMonitor()
+
+	return manager
 }
 
-// NewDefaultUpgrader 返回项目默认的 WebSocket 升级器配置。
-//
-// Origin 校验默认仅允许同源请求；需要跨域时可通过
-// WSS_ALLOWED_ORIGINS 或 WSS_ALLOW_ALL_ORIGINS 显式开启。
 func NewDefaultUpgrader() *websocket.Upgrader {
 	return &websocket.Upgrader{
 		ReadBufferSize:  1024,
@@ -61,7 +106,6 @@ func NewDefaultUpgrader() *websocket.Upgrader {
 	}
 }
 
-// AddConnection 注册一个新的 WebSocket 连接。
 func (connectionManager *WebsokcetConnectionManager) AddConnection(
 	connectionIdentifier string,
 	websocketConnection *websocket.Conn,
@@ -69,7 +113,12 @@ func (connectionManager *WebsokcetConnectionManager) AddConnection(
 	connectionManager.mu.Lock()
 	defer connectionManager.mu.Unlock()
 
-	connectionManager.connections[connectionIdentifier] = websocketConnection
+	state := &connectionState{
+		conn:         websocketConnection,
+		lastActiveAt: time.Now(),
+	}
+
+	connectionManager.connections[connectionIdentifier] = state
 	connectionManager.recordEvent(
 		context.Background(),
 		connectionIdentifier,
@@ -81,6 +130,8 @@ func (connectionManager *WebsokcetConnectionManager) AddConnection(
 		map[string]string{"component": "connections"},
 	)
 
+	go connectionManager.startConnectionHeartbeat(connectionIdentifier, state)
+
 	utilities.LogProgress(
 		"AddConnection",
 		"连接管理",
@@ -88,10 +139,18 @@ func (connectionManager *WebsokcetConnectionManager) AddConnection(
 	)
 }
 
-// RemoveConnection 根据连接标识移除一个 WebSocket 连接
 func (connectionManager *WebsokcetConnectionManager) RemoveConnection(connectionIdentifier string) {
 	connectionManager.mu.Lock()
 	defer connectionManager.mu.Unlock()
+
+	state, exists := connectionManager.connections[connectionIdentifier]
+	if !exists {
+		return
+	}
+
+	if state.heartbeatTicker != nil {
+		state.heartbeatTicker.Stop()
+	}
 
 	delete(connectionManager.connections, connectionIdentifier)
 	connectionManager.recordEvent(
@@ -111,23 +170,21 @@ func (connectionManager *WebsokcetConnectionManager) RemoveConnection(connection
 	)
 }
 
-// BroadcastMessage 向所有已注册的 WebSocket 连接广播消息
 func (connectionManager *WebsokcetConnectionManager) BroadcastMessage(messagePayload []byte) {
 	connectionManager.mu.Lock()
 	defer connectionManager.mu.Unlock()
 
 	recipientCount := len(connectionManager.connections)
-	for connectionIdentifier, websocketConnection := range connectionManager.connections {
+	for connectionIdentifier, state := range connectionManager.connections {
 		failedCount := 0
-		if sendError := websocketConnection.WriteMessage(websocket.TextMessage, messagePayload); sendError != nil {
+		if sendError := connectionManager.sendMessageToConnection(state.conn, messagePayload); sendError != nil {
 			failedCount++
 			utilities.Error(
 				"向连接 [%s] 发送消息失败: %v",
 				connectionIdentifier,
 				sendError,
 			)
-			websocketConnection.Close()
-
+			state.conn.Close()
 			delete(connectionManager.connections, connectionIdentifier)
 		}
 
@@ -146,16 +203,264 @@ func (connectionManager *WebsokcetConnectionManager) BroadcastMessage(messagePay
 	}
 }
 
-// WebsocketHandler 将默认 /chat/{uuid} 处理器注册到 http.DefaultServeMux。
+func (connectionManager *WebsokcetConnectionManager) SendMessageToConnection(
+	connectionIdentifier string,
+	messagePayload []byte,
+) error {
+	connectionManager.mu.Lock()
+	state, exists := connectionManager.connections[connectionIdentifier]
+	connectionManager.mu.Unlock()
+
+	if !exists {
+		return fmt.Errorf("连接不存在: %s", connectionIdentifier)
+	}
+
+	return connectionManager.sendMessageToConnection(state.conn, messagePayload)
+}
+
+func (connectionManager *WebsokcetConnectionManager) sendMessageToConnection(conn *websocket.Conn, payload []byte) error {
+	conn.SetWriteDeadline(time.Now().Add(connectionManager.writeTimeout))
+	return conn.WriteMessage(websocket.TextMessage, payload)
+}
+
+func (connectionManager *WebsokcetConnectionManager) UpdateLastActive(connectionIdentifier string) {
+	connectionManager.mu.Lock()
+	defer connectionManager.mu.Unlock()
+
+	if state, exists := connectionManager.connections[connectionIdentifier]; exists {
+		state.mu.Lock()
+		state.lastActiveAt = time.Now()
+		state.mu.Unlock()
+	}
+}
+
+func (connectionManager *WebsokcetConnectionManager) handlePing(connectionIdentifier string, nonce string, sentAt time.Time) {
+	connectionManager.UpdateLastActive(connectionIdentifier)
+
+	connectionManager.recordEvent(
+		context.Background(),
+		connectionIdentifier,
+		events.EventTypeHeartbeatPingReceived,
+		events.HeartbeatEventData{
+			ConnectionIdentifier: connectionIdentifier,
+			Nonce:               nonce,
+			Action:              "ping",
+		},
+		map[string]string{"component": "connections"},
+	)
+
+	pongMessage, err := buildHeartbeatPong(nonce, sentAt)
+	if err != nil {
+		utilities.Error("构建 pong 消息失败 [%s]: %v", connectionIdentifier, err)
+		return
+	}
+
+	if err := connectionManager.SendMessageToConnection(connectionIdentifier, pongMessage); err != nil {
+		utilities.Error("发送 pong 失败 [%s]: %v", connectionIdentifier, err)
+		return
+	}
+
+	latency := time.Since(sentAt).Milliseconds()
+	connectionManager.recordEvent(
+		context.Background(),
+		connectionIdentifier,
+		events.EventTypeHeartbeatPongSent,
+		events.HeartbeatEventData{
+			ConnectionIdentifier: connectionIdentifier,
+			Nonce:               nonce,
+			LatencyMs:           latency,
+			Action:              "pong",
+		},
+		map[string]string{"component": "connections"},
+	)
+
+	utilities.LogProgress(
+		"Heartbeat",
+		"Ping/Pong",
+		fmt.Sprintf("收到 ping 并回复 pong [%s], nonce=%s, latency=%dms", connectionIdentifier, nonce, latency),
+	)
+}
+
+func (connectionManager *WebsokcetConnectionManager) handlePong(connectionIdentifier string, nonce string) {
+	connectionManager.UpdateLastActive(connectionIdentifier)
+
+	connectionManager.recordEvent(
+		context.Background(),
+		connectionIdentifier,
+		events.EventTypeHeartbeatPongReceived,
+		events.HeartbeatEventData{
+			ConnectionIdentifier: connectionIdentifier,
+			Nonce:               nonce,
+			Action:              "pong",
+		},
+		map[string]string{"component": "connections"},
+	)
+
+	connectionManager.mu.Lock()
+	state, exists := connectionManager.connections[connectionIdentifier]
+	connectionManager.mu.Unlock()
+
+	if exists && state.pingNonce == nonce {
+		latency := time.Since(state.pingSentAt).Milliseconds()
+		utilities.LogProgress(
+			"Heartbeat",
+			"Ping/Pong",
+			fmt.Sprintf("收到 pong [%s], nonce=%s, latency=%dms", connectionIdentifier, nonce, latency),
+		)
+		state.mu.Lock()
+		state.pingNonce = ""
+		state.mu.Unlock()
+	}
+}
+
+func (connectionManager *WebsokcetConnectionManager) sendPing(connectionIdentifier string) {
+	connectionManager.mu.Lock()
+	state, exists := connectionManager.connections[connectionIdentifier]
+	if !exists {
+		connectionManager.mu.Unlock()
+		return
+	}
+
+	if state.pingNonce != "" {
+		connectionManager.mu.Unlock()
+		return
+	}
+
+	nonce := fmt.Sprintf("%d", time.Now().UnixNano())
+	state.pingNonce = nonce
+	state.pingSentAt = time.Now()
+	state.lastActiveAt = time.Now()
+	conn := state.conn
+	connectionManager.mu.Unlock()
+
+	pingMessage, err := buildHeartbeatPing(nonce)
+	if err != nil {
+		utilities.Error("构建 ping 消息失败 [%s]: %v", connectionIdentifier, err)
+		return
+	}
+
+	if err := connectionManager.sendMessageToConnection(conn, pingMessage); err != nil {
+		utilities.Error("发送 ping 失败 [%s]: %v", connectionIdentifier, err)
+		return
+	}
+
+	connectionManager.recordEvent(
+		context.Background(),
+		connectionIdentifier,
+		events.EventTypeHeartbeatPingSent,
+		events.HeartbeatEventData{
+			ConnectionIdentifier: connectionIdentifier,
+			Nonce:               nonce,
+			Action:              "ping",
+		},
+		map[string]string{"component": "connections"},
+	)
+
+	utilities.LogProgress(
+		"Heartbeat",
+		"Ping/Pong",
+		fmt.Sprintf("发送 ping [%s], nonce=%s", connectionIdentifier, nonce),
+	)
+}
+
+func (connectionManager *WebsokcetConnectionManager) startConnectionHeartbeat(connectionIdentifier string, state *connectionState) {
+	state.heartbeatTicker = time.NewTicker(connectionManager.heartbeatInterval)
+	defer state.heartbeatTicker.Stop()
+
+	for {
+		select {
+		case <-state.heartbeatTicker.C:
+			connectionManager.mu.Lock()
+			_, exists := connectionManager.connections[connectionIdentifier]
+			connectionManager.mu.Unlock()
+
+			if !exists {
+				return
+			}
+
+			connectionManager.sendPing(connectionIdentifier)
+
+			select {
+			case <-time.After(connectionManager.heartbeatTimeout):
+				connectionManager.mu.Lock()
+				s, ok := connectionManager.connections[connectionIdentifier]
+				if ok && s.pingNonce != "" {
+					connectionManager.mu.Unlock()
+					connectionManager.handleHeartbeatTimeout(connectionIdentifier)
+					return
+				}
+				connectionManager.mu.Unlock()
+			case <-connectionManager.ctx.Done():
+				return
+			}
+		case <-connectionManager.ctx.Done():
+			return
+		}
+	}
+}
+
+func (connectionManager *WebsokcetConnectionManager) startHeartbeatMonitor() {
+	ticker := time.NewTicker(connectionManager.heartbeatInterval / 2)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			connectionManager.checkHeartbeatTimeouts()
+		case <-connectionManager.ctx.Done():
+			return
+		}
+	}
+}
+
+func (connectionManager *WebsokcetConnectionManager) checkHeartbeatTimeouts() {
+	connectionManager.mu.Lock()
+	defer connectionManager.mu.Unlock()
+
+	now := time.Now()
+	for connectionIdentifier, state := range connectionManager.connections {
+		state.mu.Lock()
+		lastActive := state.lastActiveAt
+		state.mu.Unlock()
+
+		if now.Sub(lastActive) > connectionManager.heartbeatTimeout {
+			go connectionManager.handleHeartbeatTimeout(connectionIdentifier)
+		}
+	}
+}
+
+func (connectionManager *WebsokcetConnectionManager) handleHeartbeatTimeout(connectionIdentifier string) {
+	connectionManager.recordEvent(
+		context.Background(),
+		connectionIdentifier,
+		events.EventTypeHeartbeatTimeout,
+		events.HeartbeatEventData{
+			ConnectionIdentifier: connectionIdentifier,
+			Action:              "timeout",
+		},
+		map[string]string{"component": "connections"},
+	)
+
+	utilities.LogProgress(
+		"Heartbeat",
+		"Timeout",
+		fmt.Sprintf("连接心跳超时 [%s]，将断开连接", connectionIdentifier),
+	)
+
+	connectionManager.mu.Lock()
+	state, exists := connectionManager.connections[connectionIdentifier]
+	if exists {
+		state.conn.Close()
+		delete(connectionManager.connections, connectionIdentifier)
+	}
+	connectionManager.mu.Unlock()
+}
+
 func WebsocketHandler(upgrader *websocket.Upgrader) {
 	websocketConnectionManager := NewWebsocketGatewayConnectionManager()
 	RegisterWebSocketHandlers(http.DefaultServeMux, websocketConnectionManager, upgrader)
 }
 
-// RegisterWebSocketHandlers 注册 EC2/本地 server 模式下的 WebSocket endpoint。
-//
-// endpoint 格式：/chat/{uuid}
-// messageHandler 为可选参数，传入时消息将通过 LLM pipeline 处理后再广播。
 func RegisterWebSocketHandlers(
 	websocketServeMux *http.ServeMux,
 	connectionManager *WebsokcetConnectionManager,
@@ -208,6 +513,12 @@ func RegisterWebSocketHandlers(
 				continue
 			}
 
+			if isHeartbeatMessage(messagePayload) {
+				handleHeartbeatMessage(connectionManager, connectionIdentifier, messagePayload)
+				continue
+			}
+
+			connectionManager.UpdateLastActive(connectionIdentifier)
 			connectionManager.recordEvent(
 				httpRequest.Context(),
 				connectionIdentifier,
@@ -260,6 +571,85 @@ func RegisterWebSocketHandlers(
 			}
 		}
 	})
+}
+
+func isHeartbeatMessage(payload []byte) bool {
+	var msg models.WSMessage
+	if err := msg.UnmarshalJSON(payload); err != nil {
+		return false
+	}
+	return msg.Type == models.HeartbeatChat
+}
+
+func handleHeartbeatMessage(
+	connectionManager *WebsokcetConnectionManager,
+	connectionIdentifier string,
+	payload []byte,
+) {
+	var msg models.WSMessage
+	if err := msg.UnmarshalJSON(payload); err != nil {
+		utilities.Error("解析心跳消息失败 [%s]: %v", connectionIdentifier, err)
+		return
+	}
+
+	var heartbeatData models.HeartbeatChatData
+	if err := msg.Data.Unmarshal(&heartbeatData); err != nil {
+		utilities.Error("解析心跳数据失败 [%s]: %v", connectionIdentifier, err)
+		return
+	}
+
+	switch heartbeatData.Action {
+	case "ping":
+		connectionManager.handlePing(connectionIdentifier, heartbeatData.Nonce, heartbeatData.Timestamp)
+	case "pong":
+		connectionManager.handlePong(connectionIdentifier, heartbeatData.Nonce)
+	default:
+		utilities.Error("未知心跳动作 [%s]: %s", connectionIdentifier, heartbeatData.Action)
+	}
+}
+
+func buildHeartbeatPing(nonce string) ([]byte, error) {
+	heartbeatData := models.HeartbeatChatData{
+		Action:    "ping",
+		Nonce:     nonce,
+		Timestamp: time.Now(),
+	}
+
+	dataBytes, err := heartbeatData.MarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+
+	msg := models.WSMessage{
+		Type:      models.HeartbeatChat,
+		Data:      dataBytes,
+		Timestamp: time.Now(),
+	}
+
+	return msg.MarshalJSON()
+}
+
+func buildHeartbeatPong(nonce string, pingSentAt time.Time) ([]byte, error) {
+	latency := time.Since(pingSentAt).Milliseconds()
+	heartbeatData := models.HeartbeatChatData{
+		Action:    "pong",
+		Nonce:     nonce,
+		Timestamp: time.Now(),
+		Latency:   latency,
+	}
+
+	dataBytes, err := heartbeatData.MarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+
+	msg := models.WSMessage{
+		Type:      models.HeartbeatChat,
+		Data:      dataBytes,
+		Timestamp: time.Now(),
+	}
+
+	return msg.MarshalJSON()
 }
 
 func chatConnectionIdentifierFromRequest(httpRequest *http.Request) (string, error) {
