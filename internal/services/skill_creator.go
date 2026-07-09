@@ -41,7 +41,7 @@ var (
 		regexp.MustCompile(`(?i)read.*file|write.*file|delete.*file`),
 		regexp.MustCompile(`(?i)rm\s+-rf|sudo|chmod|curl.*pipe|wget.*pipe`),
 		regexp.MustCompile(`(?i)<script|javascript:|data:.*base64`),
-		regexp.MustCompile(`(?i)\\x|\\u|\\0|\\r|\\n\\s*\\n`),
+		regexp.MustCompile(`(?i)\\x|\\u|\\0|\\r|\\n\s*\\n`),
 	}
 )
 
@@ -67,31 +67,75 @@ func NewCreateSkillRateLimiter() *CreateSkillRateLimiter {
 }
 
 func (limiter *CreateSkillRateLimiter) Allow(userID string) bool {
+	const component = "SkillCreator"
+	const op = "RateLimiter.Allow"
+	traceID := utilities.NewTraceID()
+
 	limiter.mutex <- struct{}{}
 	defer func() { <-limiter.mutex }()
 
 	now := time.Now()
+	windowReset := false
 	if now.Sub(limiter.lastReset) > time.Minute {
 		limiter.requestCounts = make(map[string]int)
 		limiter.lastReset = now
+		windowReset = true
 	}
 
 	count := limiter.requestCounts[userID]
-	if count >= maxCreateSkillRatePerMinute {
+	allowed := count < maxCreateSkillRatePerMinute
+
+	utilities.LogVerbose(component, op, "速率限制检查",
+		fmt.Sprintf("trace_id=%s", traceID),
+		fmt.Sprintf("user_id=%s", utilities.Mask(userID)),
+		fmt.Sprintf("current_count=%d", count),
+		fmt.Sprintf("limit=%d", maxCreateSkillRatePerMinute),
+		fmt.Sprintf("window_reset=%t", windowReset),
+		fmt.Sprintf("allowed=%t", allowed),
+		fmt.Sprintf("window_age_ms=%d", now.Sub(limiter.lastReset).Milliseconds()),
+	)
+
+	if !allowed {
+		utilities.LogWarn(component, op,
+			"速率限制已触发，拒绝请求",
+			0,
+			fmt.Sprintf("trace_id=%s", traceID),
+			fmt.Sprintf("user_id=%s", utilities.Mask(userID)),
+			fmt.Sprintf("count=%d", count),
+			fmt.Sprintf("limit=%d", maxCreateSkillRatePerMinute),
+		)
 		return false
 	}
+
 	limiter.requestCounts[userID] = count + 1
 	return true
 }
 
 func parseCreateSkillCommand(message string) (skillName string, description string, isCommand bool) {
+	const component = "SkillCreator"
+	const op = "parseCreateSkillCommand"
+	traceID := utilities.NewTraceID()
+
 	trimmed := strings.TrimSpace(message)
+
+	utilities.LogVerbose(component, op, "检测是否为创建技能命令",
+		fmt.Sprintf("trace_id=%s", traceID),
+		fmt.Sprintf("message_len=%d", len(trimmed)),
+		fmt.Sprintf("has_prefix=%t", strings.HasPrefix(trimmed, createSkillCommandPrefix)),
+	)
+
 	if !strings.HasPrefix(trimmed, createSkillCommandPrefix) {
+		utilities.LogVerbose(component, op, "非创建技能命令，跳过",
+			fmt.Sprintf("trace_id=%s", traceID),
+		)
 		return "", "", false
 	}
 
 	rest := strings.TrimSpace(strings.TrimPrefix(trimmed, createSkillCommandPrefix))
 	if rest == "" {
+		utilities.LogVerbose(component, op, "检测到创建技能命令，但缺少参数",
+			fmt.Sprintf("trace_id=%s", traceID),
+		)
 		return "", "", true
 	}
 
@@ -101,49 +145,142 @@ func parseCreateSkillCommand(message string) (skillName string, description stri
 		description = strings.TrimSpace(parts[1])
 	}
 
+	utilities.LogVerbose(component, op, "创建技能命令解析完成",
+		fmt.Sprintf("trace_id=%s", traceID),
+		fmt.Sprintf("skill_name=%s", skillName),
+		fmt.Sprintf("description_len=%d", len(description)),
+	)
+
 	return skillName, description, true
 }
 
 func validateSkillName(name string) error {
+	const component = "SkillCreator"
+	const op = "validateSkillName"
+	traceID := utilities.NewTraceID()
+
+	utilities.LogVerbose(component, op, "开始校验技能名称",
+		fmt.Sprintf("trace_id=%s", traceID),
+		fmt.Sprintf("name=%s", name),
+		fmt.Sprintf("name_len=%d", len(name)),
+		fmt.Sprintf("regex=%s", skillNameRegex.String()),
+	)
+
 	if name == "" {
+		utilities.LogWarn(component, op, "技能名称为空", 0,
+			fmt.Sprintf("trace_id=%s", traceID),
+		)
 		return fmt.Errorf("技能名称不能为空")
 	}
-	if !skillNameRegex.MatchString(name) {
+
+	matched := skillNameRegex.MatchString(name)
+	utilities.LogVerbose(component, op, "正则匹配结果",
+		fmt.Sprintf("trace_id=%s", traceID),
+		fmt.Sprintf("name=%s", name),
+		fmt.Sprintf("regex_matched=%t", matched),
+		fmt.Sprintf("regex_pattern=%s", skillNameRegex.String()),
+	)
+
+	if !matched {
+		utilities.LogWarn(component, op,
+			fmt.Sprintf("技能名称 %q 不符合正则规则", name), 0,
+			fmt.Sprintf("trace_id=%s", traceID),
+		)
 		return fmt.Errorf("技能名称 %q 非法: 仅允许小写字母、数字和下划线，长度 1-64", name)
 	}
+
+	utilities.LogVerbose(component, op, "技能名称校验通过",
+		fmt.Sprintf("trace_id=%s", traceID),
+		fmt.Sprintf("name=%s", name),
+	)
 	return nil
 }
 
 func isCreateSkillAllowed() bool {
+	const component = "SkillCreator"
+	const op = "isCreateSkillAllowed"
+
 	value := utilities.GetEnv("IS_ALLOW_USER_CREATE_SKILL", "false")
-	return strings.EqualFold(strings.TrimSpace(value), "true")
+	allowed := strings.EqualFold(strings.TrimSpace(value), "true")
+
+	utilities.LogVerbose(component, op, "检查技能创建权限开关",
+		fmt.Sprintf("IS_ALLOW_USER_CREATE_SKILL=%s", value),
+		fmt.Sprintf("allowed=%t", allowed),
+	)
+
+	return allowed
 }
 
 // isProductionMode 检查当前是否为生产环境模式。
 // 生产环境返回通用错误消息，避免泄露配置细节。
 func isProductionMode() bool {
+	const component = "SkillCreator"
+	const op = "isProductionMode"
+
 	mode := utilities.GetEnv("MODE", "development")
-	return strings.EqualFold(strings.TrimSpace(mode), "production")
+	isProd := strings.EqualFold(strings.TrimSpace(mode), "production")
+
+	utilities.LogVerbose(component, op, "检测运行模式",
+		fmt.Sprintf("MODE=%s", mode),
+		fmt.Sprintf("is_production=%t", isProd),
+	)
+
+	return isProd
 }
 
 func detectPromptInjection(input string) PromptInjectionDetection {
+	const component = "SkillCreator"
+	const op = "detectPromptInjection"
+	traceID := utilities.NewTraceID()
+	start := time.Now()
+
+	utilities.LogVerbose(component, op, "开始输入层提示注入检测",
+		fmt.Sprintf("trace_id=%s", traceID),
+		fmt.Sprintf("input_len=%d", len(input)),
+		fmt.Sprintf("total_patterns=%d", len(injectionPatterns)),
+	)
+
 	if input == "" {
+		utilities.LogVerbose(component, op, "输入为空，跳过检测",
+			fmt.Sprintf("trace_id=%s", traceID),
+		)
 		return PromptInjectionDetection{IsInjection: false}
 	}
 
 	matched := make([]string, 0)
-	for _, pattern := range injectionPatterns {
-		if pattern.MatchString(input) {
+	for idx, pattern := range injectionPatterns {
+		isMatch := pattern.MatchString(input)
+		utilities.LogVerbose(component, op, "检查注入模式",
+			fmt.Sprintf("trace_id=%s", traceID),
+			fmt.Sprintf("pattern_index=%d/%d", idx+1, len(injectionPatterns)),
+			fmt.Sprintf("pattern=%s", pattern.String()),
+			fmt.Sprintf("matched=%t", isMatch),
+		)
+		if isMatch {
 			matched = append(matched, pattern.String())
 		}
 	}
 
 	if len(matched) == 0 {
+		utilities.LogVerbose(component, op, "未检测到注入模式",
+			fmt.Sprintf("trace_id=%s", traceID),
+			fmt.Sprintf("elapsed_ns=%d", time.Since(start).Nanoseconds()),
+		)
 		return PromptInjectionDetection{IsInjection: false}
 	}
 
 	confidence := float64(len(matched)) / float64(len(injectionPatterns))
 	reason := fmt.Sprintf("检测到 %d 个可疑模式匹配", len(matched))
+
+	utilities.LogWarn(component, op,
+		"检测到提示注入风险",
+		time.Since(start),
+		fmt.Sprintf("trace_id=%s", traceID),
+		fmt.Sprintf("matched_count=%d", len(matched)),
+		fmt.Sprintf("total_patterns=%d", len(injectionPatterns)),
+		fmt.Sprintf("confidence=%.4f", confidence),
+		fmt.Sprintf("elapsed_ns=%d", time.Since(start).Nanoseconds()),
+	)
 
 	return PromptInjectionDetection{
 		IsInjection:     true,
@@ -154,23 +291,58 @@ func detectPromptInjection(input string) PromptInjectionDetection {
 }
 
 func validateGeneratedSkillContent(content string) PromptInjectionDetection {
+	const component = "SkillCreator"
+	const op = "validateGeneratedSkillContent"
+	traceID := utilities.NewTraceID()
+	start := time.Now()
+
+	utilities.LogVerbose(component, op, "开始输出层安全校验",
+		fmt.Sprintf("trace_id=%s", traceID),
+		fmt.Sprintf("content_len=%d", len(content)),
+		fmt.Sprintf("total_patterns=%d", len(outputInjectionPatterns)),
+	)
+
 	if content == "" {
+		utilities.LogVerbose(component, op, "内容为空，跳过校验",
+			fmt.Sprintf("trace_id=%s", traceID),
+		)
 		return PromptInjectionDetection{IsInjection: false}
 	}
 
 	matched := make([]string, 0)
-	for _, pattern := range outputInjectionPatterns {
-		if pattern.MatchString(content) {
+	for idx, pattern := range outputInjectionPatterns {
+		isMatch := pattern.MatchString(content)
+		utilities.LogVerbose(component, op, "检查输出注入模式",
+			fmt.Sprintf("trace_id=%s", traceID),
+			fmt.Sprintf("pattern_index=%d/%d", idx+1, len(outputInjectionPatterns)),
+			fmt.Sprintf("pattern=%s", pattern.String()),
+			fmt.Sprintf("matched=%t", isMatch),
+		)
+		if isMatch {
 			matched = append(matched, pattern.String())
 		}
 	}
 
 	if len(matched) == 0 {
+		utilities.LogVerbose(component, op, "输出内容安全校验通过",
+			fmt.Sprintf("trace_id=%s", traceID),
+			fmt.Sprintf("elapsed_ns=%d", time.Since(start).Nanoseconds()),
+		)
 		return PromptInjectionDetection{IsInjection: false}
 	}
 
 	confidence := float64(len(matched)) / float64(len(outputInjectionPatterns))
 	reason := fmt.Sprintf("生成的技能内容中检测到 %d 个安全风险模式", len(matched))
+
+	utilities.LogWarn(component, op,
+		"输出内容安全校验失败",
+		time.Since(start),
+		fmt.Sprintf("trace_id=%s", traceID),
+		fmt.Sprintf("matched_count=%d", len(matched)),
+		fmt.Sprintf("total_patterns=%d", len(outputInjectionPatterns)),
+		fmt.Sprintf("confidence=%.4f", confidence),
+		fmt.Sprintf("elapsed_ns=%d", time.Since(start).Nanoseconds()),
+	)
 
 	return PromptInjectionDetection{
 		IsInjection:     true,
@@ -191,13 +363,28 @@ func GenerateSkillContent(
 	skillName string,
 	description string,
 ) (string, error) {
+	const component = "SkillCreator"
+	const op = "GenerateSkillContent"
+	traceID := utilities.NewTraceID()
+	start := time.Now()
+	utilities.LogStart(component, op)
+
 	if llmService == nil {
+		utilities.LogError(component, op, fmt.Errorf("LLM 服务未初始化"), 0,
+			fmt.Sprintf("trace_id=%s", traceID),
+		)
 		return "", fmt.Errorf("LLM 服务未初始化")
 	}
 	if skillName == "" {
+		utilities.LogError(component, op, fmt.Errorf("技能名称为空"), 0,
+			fmt.Sprintf("trace_id=%s", traceID),
+		)
 		return "", fmt.Errorf("技能名称不能为空")
 	}
 	if description == "" {
+		utilities.LogError(component, op, fmt.Errorf("技能描述为空"), 0,
+			fmt.Sprintf("trace_id=%s", traceID),
+		)
 		return "", fmt.Errorf("技能描述不能为空")
 	}
 
@@ -240,20 +427,63 @@ func GenerateSkillContent(
 		skillName, description,
 	)
 
+	// ── 记录 LLM 请求构建详情 ──
+	utilities.LogVerbose(component, op, "LLM 请求构建完成",
+		fmt.Sprintf("trace_id=%s", traceID),
+		fmt.Sprintf("skill_name=%s", skillName),
+		fmt.Sprintf("system_prompt_len=%d", len(systemPrompt)),
+		fmt.Sprintf("user_prompt_len=%d", len(userPrompt)),
+		fmt.Sprintf("description_len=%d", len(description)),
+	)
+
+	utilities.LogProgress(component, op, "正在调用 LLM 生成技能内容",
+		fmt.Sprintf("trace_id=%s", traceID),
+		fmt.Sprintf("skill=%s", skillName),
+	)
+
+	llmStart := time.Now()
 	resp, err := llmService.Generate(ctx, LLMRequest{
 		SystemPrompt: systemPrompt,
 		UserMessage:  userPrompt,
 	})
+	llmElapsed := time.Since(llmStart)
+
 	if err != nil {
+		utilities.LogError(component, op, fmt.Errorf("LLM 生成失败: %w", err), time.Since(start),
+			fmt.Sprintf("trace_id=%s", traceID),
+			fmt.Sprintf("skill=%s", skillName),
+			fmt.Sprintf("llm_elapsed_ns=%d", llmElapsed.Nanoseconds()),
+		)
 		return "", fmt.Errorf("LLM 生成技能内容失败: %w", err)
 	}
 
+	// ── 记录 LLM 响应详情 ──
+	utilities.LogVerbose(component, op, "LLM 响应接收",
+		fmt.Sprintf("trace_id=%s", traceID),
+		fmt.Sprintf("content_len=%d", len(resp.Content)),
+		fmt.Sprintf("tokens_used=%d", resp.TokensUsed),
+		fmt.Sprintf("llm_elapsed_ns=%d", llmElapsed.Nanoseconds()),
+	)
+
 	content := strings.TrimSpace(resp.Content)
 	if len(content) > maxGeneratedSkillSize {
-		utilities.LogWarn("SkillCreator", "GenerateSkillContent",
-			fmt.Sprintf("生成的技能内容超过 %d 字节，已截断", maxGeneratedSkillSize), 0)
+		utilities.LogWarn(component, op,
+			fmt.Sprintf("生成的技能内容超过 %d 字节，已截断", maxGeneratedSkillSize),
+			time.Since(start),
+			fmt.Sprintf("trace_id=%s", traceID),
+			fmt.Sprintf("original_size=%d", len(content)),
+			fmt.Sprintf("truncated_to=%d", maxGeneratedSkillSize),
+		)
 		content = content[:maxGeneratedSkillSize]
 	}
+
+	utilities.LogNano(component, op, utilities.INFO, "OK", time.Since(start),
+		fmt.Sprintf("trace_id=%s", traceID),
+		fmt.Sprintf("skill=%s", skillName),
+		fmt.Sprintf("content_len=%d", len(content)),
+		fmt.Sprintf("llm_elapsed_ns=%d", llmElapsed.Nanoseconds()),
+		fmt.Sprintf("total_ns=%d", time.Since(start).Nanoseconds()),
+	)
 
 	return content, nil
 }
@@ -264,54 +494,123 @@ func (handler *ChatHandler) tryHandleCreateSkillCommand(
 	incomingMessage models.WSMessage,
 	userData models.UserChatData,
 ) bool {
+	const component = "ChatHandler"
+	const op = "tryHandleCreateSkillCommand"
+	pipelineTraceID := utilities.NewTraceID()
+	pipelineStart := time.Now()
+
+	// ── 步骤 1: 命令解析 ──
+	stepStart := time.Now()
 	skillName, description, isCommand := parseCreateSkillCommand(userData.Message)
+	utilities.LogNano(component, op, utilities.INFO, "IN_PROGRESS", time.Since(stepStart),
+		fmt.Sprintf("trace_id=%s", pipelineTraceID),
+		fmt.Sprintf("step=command_parse"),
+		fmt.Sprintf("is_command=%t", isCommand),
+		fmt.Sprintf("skill_name=%s", skillName),
+		fmt.Sprintf("description_len=%d", len(description)),
+		fmt.Sprintf("step_ns=%d", time.Since(stepStart).Nanoseconds()),
+	)
+
 	if !isCommand {
 		return false
 	}
 
-	start := time.Now()
-	utilities.LogStart("ChatHandler", "tryHandleCreateSkillCommand")
-	utilities.Logf("ChatHandler", "tryHandleCreateSkillCommand", utilities.INFO, "IN_PROGRESS", time.Since(start),
+	utilities.LogStart(component, op)
+	utilities.LogVerbose(component, op, "技能创建流水线启动",
+		fmt.Sprintf("trace_id=%s", pipelineTraceID),
 		fmt.Sprintf("conn=%s", connectionID),
 		fmt.Sprintf("skill=%s", skillName),
+		fmt.Sprintf("description_len=%d", len(description)),
 	)
 
-	// 校验技能名称格式
+	// ── 步骤 2: 技能名称校验 ──
+	stepStart = time.Now()
 	if err := validateSkillName(skillName); err != nil {
 		handler.sendSkillCreationError(connectionID, "invalid_skill_name", err.Error())
-		utilities.LogWarn("ChatHandler", "tryHandleCreateSkillCommand",
-			err.Error(), time.Since(start))
+		utilities.LogNano(component, op, utilities.WARN, "FAIL", time.Since(stepStart),
+			fmt.Sprintf("trace_id=%s", pipelineTraceID),
+			fmt.Sprintf("step=name_validation"),
+			fmt.Sprintf("error=%s", err.Error()),
+			fmt.Sprintf("step_ns=%d", time.Since(stepStart).Nanoseconds()),
+		)
 		return true
 	}
+	utilities.LogNano(component, op, utilities.INFO, "IN_PROGRESS", time.Since(stepStart),
+		fmt.Sprintf("trace_id=%s", pipelineTraceID),
+		fmt.Sprintf("step=name_validation"),
+		fmt.Sprintf("result=pass"),
+		fmt.Sprintf("step_ns=%d", time.Since(stepStart).Nanoseconds()),
+	)
 
-	// 校验技能描述长度不超过限制
+	// ── 步骤 3: 描述长度上限校验 ──
+	stepStart = time.Now()
 	if len(description) > maxDescriptionLength {
 		handler.sendSkillCreationError(connectionID, "description_too_long",
 			fmt.Sprintf("技能描述超过最大长度 %d 字符", maxDescriptionLength))
+		utilities.LogNano(component, op, utilities.WARN, "FAIL", time.Since(stepStart),
+			fmt.Sprintf("trace_id=%s", pipelineTraceID),
+			fmt.Sprintf("step=description_max_validation"),
+			fmt.Sprintf("description_len=%d", len(description)),
+			fmt.Sprintf("max=%d", maxDescriptionLength),
+			fmt.Sprintf("step_ns=%d", time.Since(stepStart).Nanoseconds()),
+		)
 		return true
 	}
 
-	// 校验技能描述长度不低于最小要求
+	// ── 步骤 4: 描述长度下限校验 ──
 	if len(description) < createSkillDescriptionMinLen {
 		handler.sendSkillCreationError(connectionID, "missing_description",
 			fmt.Sprintf("技能描述至少需要 %d 个字符，例如: #create_skill %s 你的技能描述",
 				createSkillDescriptionMinLen, skillName))
+		utilities.LogNano(component, op, utilities.WARN, "FAIL", time.Since(stepStart),
+			fmt.Sprintf("trace_id=%s", pipelineTraceID),
+			fmt.Sprintf("step=description_min_validation"),
+			fmt.Sprintf("description_len=%d", len(description)),
+			fmt.Sprintf("min=%d", createSkillDescriptionMinLen),
+			fmt.Sprintf("step_ns=%d", time.Since(stepStart).Nanoseconds()),
+		)
 		return true
 	}
+	utilities.LogNano(component, op, utilities.INFO, "IN_PROGRESS", time.Since(stepStart),
+		fmt.Sprintf("trace_id=%s", pipelineTraceID),
+		fmt.Sprintf("step=description_validation"),
+		fmt.Sprintf("result=pass"),
+		fmt.Sprintf("description_len=%d", len(description)),
+		fmt.Sprintf("step_ns=%d", time.Since(stepStart).Nanoseconds()),
+	)
 
-	// 输入层提示注入检测
+	// ── 步骤 5: 输入层提示注入检测 ──
+	stepStart = time.Now()
 	injectionResult := detectPromptInjection(description)
+	utilities.LogNano(component, op, utilities.INFO, "IN_PROGRESS", time.Since(stepStart),
+		fmt.Sprintf("trace_id=%s", pipelineTraceID),
+		fmt.Sprintf("step=injection_detection"),
+		fmt.Sprintf("is_injection=%t", injectionResult.IsInjection),
+		fmt.Sprintf("confidence=%.4f", injectionResult.Confidence),
+		fmt.Sprintf("matched_count=%d", len(injectionResult.MatchedPatterns)),
+		fmt.Sprintf("step_ns=%d", time.Since(stepStart).Nanoseconds()),
+	)
 	if injectionResult.IsInjection {
 		handler.sendSkillCreationError(connectionID, "prompt_injection_detected",
 			fmt.Sprintf("检测到提示注入攻击: %s。请使用合法的技能描述。", injectionResult.Reason))
-		utilities.LogWarn("ChatHandler", "tryHandleCreateSkillCommand",
+		utilities.LogWarn(component, op,
 			fmt.Sprintf("提示注入检测: 置信度=%.2f, 匹配模式=%v", injectionResult.Confidence, injectionResult.MatchedPatterns),
-			time.Since(start))
+			time.Since(pipelineStart),
+			fmt.Sprintf("trace_id=%s", pipelineTraceID),
+		)
 		return true
 	}
 
-	// 校验技能创建功能开关是否启用
-	if !isCreateSkillAllowed() {
+	// ── 步骤 6: 权限检查 ──
+	stepStart = time.Now()
+	allowed := isCreateSkillAllowed()
+	utilities.LogNano(component, op, utilities.INFO, "IN_PROGRESS", time.Since(stepStart),
+		fmt.Sprintf("trace_id=%s", pipelineTraceID),
+		fmt.Sprintf("step=permission_check"),
+		fmt.Sprintf("allowed=%t", allowed),
+		fmt.Sprintf("step_ns=%d", time.Since(stepStart).Nanoseconds()),
+	)
+	if !allowed {
 		// 生产环境不暴露配置细节，返回通用 403
 		if isProductionMode() {
 			handler.sendSkillCreationError(connectionID, "forbidden",
@@ -320,12 +619,23 @@ func (handler *ChatHandler) tryHandleCreateSkillCommand(
 			handler.sendSkillCreationError(connectionID, "skill_creation_disabled",
 				"#create_skill 功能未启用: 请在 .env 中设置 IS_ALLOW_USER_CREATE_SKILL=true 后重启服务")
 		}
-		utilities.LogWarn("ChatHandler", "tryHandleCreateSkillCommand",
-			"IS_ALLOW_USER_CREATE_SKILL 未启用，已拒绝", time.Since(start))
+		utilities.LogWarn(component, op,
+			"IS_ALLOW_USER_CREATE_SKILL 未启用，已拒绝", time.Since(pipelineStart),
+			fmt.Sprintf("trace_id=%s", pipelineTraceID),
+		)
 		return true
 	}
 
-	// 校验 S3 技能加载器是否可用
+	// ── 步骤 7: S3 加载器可用性检查 ──
+	stepStart = time.Now()
+	s3LoaderAvailable := handler.s3Loader != nil && handler.s3Loader.bucket != ""
+	utilities.LogNano(component, op, utilities.INFO, "IN_PROGRESS", time.Since(stepStart),
+		fmt.Sprintf("trace_id=%s", pipelineTraceID),
+		fmt.Sprintf("step=s3_loader_check"),
+		fmt.Sprintf("loader_nil=%t", handler.s3Loader == nil),
+		fmt.Sprintf("available=%t", s3LoaderAvailable),
+		fmt.Sprintf("step_ns=%d", time.Since(stepStart).Nanoseconds()),
+	)
 	if handler.s3Loader == nil {
 		if isProductionMode() {
 			handler.sendSkillCreationError(connectionID, "forbidden",
@@ -347,7 +657,8 @@ func (handler *ChatHandler) tryHandleCreateSkillCommand(
 		return true
 	}
 
-	// 检查目标技能是否已存在于 S3
+	// ── 步骤 8: 技能存在性检查 ──
+	stepStart = time.Now()
 	handler.sendThinking(connectionID, models.SystemThinkingData{
 		Phase:   "skill_creation",
 		Thought: fmt.Sprintf("正在检查技能 /%s 是否已存在...", skillName),
@@ -359,9 +670,20 @@ func (handler *ChatHandler) tryHandleCreateSkillCommand(
 	}, incomingMessage.SkillsId)
 
 	exists, existsErr := handler.s3Loader.SkillExists(ctx, skillName)
+	utilities.LogNano(component, op, utilities.INFO, "IN_PROGRESS", time.Since(stepStart),
+		fmt.Sprintf("trace_id=%s", pipelineTraceID),
+		fmt.Sprintf("step=existence_check"),
+		fmt.Sprintf("skill=%s", skillName),
+		fmt.Sprintf("exists=%t", exists),
+		fmt.Sprintf("has_error=%t", existsErr != nil),
+		fmt.Sprintf("step_ns=%d", time.Since(stepStart).Nanoseconds()),
+	)
+
 	if existsErr != nil {
 		// S3 内部错误详情只记录服务器日志，不暴露给客户端
-		utilities.LogError("ChatHandler", "tryHandleCreateSkillCommand", existsErr, time.Since(start),
+		utilities.LogError(component, op, existsErr, time.Since(pipelineStart),
+			fmt.Sprintf("trace_id=%s", pipelineTraceID),
+			fmt.Sprintf("step=existence_check"),
 			fmt.Sprintf("bucket=%s", handler.s3Loader.bucket),
 			fmt.Sprintf("region=%s", handler.s3Loader.region),
 			fmt.Sprintf("skill=%s", skillName),
@@ -386,13 +708,15 @@ func (handler *ChatHandler) tryHandleCreateSkillCommand(
 				fmt.Sprintf("技能 /%s 已存在，拒绝覆盖。请删除 S3 中的 %s 后重试。",
 					skillName, handler.s3Loader.StorageURI(skillName)))
 		}
-		utilities.LogWarn("ChatHandler", "tryHandleCreateSkillCommand",
-			fmt.Sprintf("技能已存在: %s", skillName), time.Since(start))
+		utilities.LogWarn(component, op,
+			fmt.Sprintf("技能已存在: %s", skillName), time.Since(pipelineStart),
+			fmt.Sprintf("trace_id=%s", pipelineTraceID),
+		)
 		return true
 	}
 
-	// 先在 S3 创建空文件占位，原子性地预留技能名称
-	// 防止并发场景下多个请求同时创建同名技能
+	// ── 步骤 9: S3 名称预留 ──
+	stepStart = time.Now()
 	handler.sendThinking(connectionID, models.SystemThinkingData{
 		Phase:   "skill_creation",
 		Thought: fmt.Sprintf("正在 S3 预留技能名称 /%s...", skillName),
@@ -403,6 +727,13 @@ func (handler *ChatHandler) tryHandleCreateSkillCommand(
 	}, incomingMessage.SkillsId)
 
 	reserveErr := handler.s3Loader.UploadSkill(ctx, skillName, []byte(""))
+	utilities.LogNano(component, op, utilities.INFO, "IN_PROGRESS", time.Since(stepStart),
+		fmt.Sprintf("trace_id=%s", pipelineTraceID),
+		fmt.Sprintf("step=name_reservation"),
+		fmt.Sprintf("skill=%s", skillName),
+		fmt.Sprintf("success=%t", reserveErr == nil),
+		fmt.Sprintf("step_ns=%d", time.Since(stepStart).Nanoseconds()),
+	)
 	if reserveErr != nil {
 		if isProductionMode() {
 			handler.sendSkillCreationError(connectionID, "forbidden",
@@ -411,11 +742,15 @@ func (handler *ChatHandler) tryHandleCreateSkillCommand(
 			handler.sendSkillCreationError(connectionID, "s3_reserve_failed",
 				"S3 文件预留失败，请检查 AWS 凭证权限或存储桶配置")
 		}
-		utilities.LogError("ChatHandler", "tryHandleCreateSkillCommand", reserveErr, time.Since(start))
+		utilities.LogError(component, op, reserveErr, time.Since(pipelineStart),
+			fmt.Sprintf("trace_id=%s", pipelineTraceID),
+			fmt.Sprintf("step=name_reservation"),
+		)
 		return true
 	}
 
-	// 调用 LLM 生成技能 Markdown 内容
+	// ── 步骤 10: LLM 生成技能内容 ──
+	stepStart = time.Now()
 	handler.sendThinking(connectionID, models.SystemThinkingData{
 		Phase:   "skill_creation",
 		Thought: "正在调用 AI 生成技能内容...",
@@ -425,14 +760,32 @@ func (handler *ChatHandler) tryHandleCreateSkillCommand(
 		},
 	}, incomingMessage.SkillsId)
 
+	utilities.LogProgress(component, op, "开始 LLM 生成",
+		fmt.Sprintf("trace_id=%s", pipelineTraceID),
+		fmt.Sprintf("skill=%s", skillName),
+	)
+
 	llmStart := time.Now()
 	markdown, llmErr := GenerateSkillContent(ctx, handler.executor.llmService, skillName, description)
+	llmLatency := time.Since(llmStart)
+
+	utilities.LogNano(component, op, utilities.INFO, "IN_PROGRESS", time.Since(stepStart),
+		fmt.Sprintf("trace_id=%s", pipelineTraceID),
+		fmt.Sprintf("step=llm_generation"),
+		fmt.Sprintf("success=%t", llmErr == nil),
+		fmt.Sprintf("content_len=%d", len(markdown)),
+		fmt.Sprintf("llm_elapsed_ns=%d", llmLatency.Nanoseconds()),
+		fmt.Sprintf("step_ns=%d", time.Since(stepStart).Nanoseconds()),
+	)
+
 	if llmErr != nil {
 		// 生成失败，清理已预留的空文件
 		cleanupErr := handler.s3Loader.DeleteSkill(ctx, skillName)
 		if cleanupErr != nil {
-			utilities.LogWarn("ChatHandler", "tryHandleCreateSkillCommand",
-				fmt.Sprintf("清理预留文件失败: %v", cleanupErr), time.Since(start))
+			utilities.LogWarn(component, op,
+				fmt.Sprintf("清理预留文件失败: %v", cleanupErr), time.Since(pipelineStart),
+				fmt.Sprintf("trace_id=%s", pipelineTraceID),
+			)
 		}
 		if isProductionMode() {
 			handler.sendSkillCreationError(connectionID, "forbidden",
@@ -441,29 +794,45 @@ func (handler *ChatHandler) tryHandleCreateSkillCommand(
 			handler.sendSkillCreationError(connectionID, "llm_generation_failed",
 				fmt.Sprintf("AI 生成技能内容失败: %v", llmErr))
 		}
-		utilities.LogError("ChatHandler", "tryHandleCreateSkillCommand", llmErr, time.Since(start))
+		utilities.LogError(component, op, llmErr, time.Since(pipelineStart),
+			fmt.Sprintf("trace_id=%s", pipelineTraceID),
+			fmt.Sprintf("step=llm_generation"),
+		)
 		return true
 	}
-	llmLatency := time.Since(llmStart)
 
-	// 输出层安全校验，检测间接提示注入
+	// ── 步骤 11: 输出层安全校验 ──
+	stepStart = time.Now()
 	outputInjectionResult := validateGeneratedSkillContent(markdown)
+	utilities.LogNano(component, op, utilities.INFO, "IN_PROGRESS", time.Since(stepStart),
+		fmt.Sprintf("trace_id=%s", pipelineTraceID),
+		fmt.Sprintf("step=output_validation"),
+		fmt.Sprintf("is_injection=%t", outputInjectionResult.IsInjection),
+		fmt.Sprintf("confidence=%.4f", outputInjectionResult.Confidence),
+		fmt.Sprintf("matched_count=%d", len(outputInjectionResult.MatchedPatterns)),
+		fmt.Sprintf("step_ns=%d", time.Since(stepStart).Nanoseconds()),
+	)
 	if outputInjectionResult.IsInjection {
 		// 安全校验失败，清理已预留的空文件
 		cleanupErr := handler.s3Loader.DeleteSkill(ctx, skillName)
 		if cleanupErr != nil {
-			utilities.LogWarn("ChatHandler", "tryHandleCreateSkillCommand",
-				fmt.Sprintf("清理预留文件失败: %v", cleanupErr), time.Since(start))
+			utilities.LogWarn(component, op,
+				fmt.Sprintf("清理预留文件失败: %v", cleanupErr), time.Since(pipelineStart),
+				fmt.Sprintf("trace_id=%s", pipelineTraceID),
+			)
 		}
 		handler.sendSkillCreationError(connectionID, "output_injection_detected",
 			fmt.Sprintf("生成的技能内容包含安全风险: %s。已阻止上传。", outputInjectionResult.Reason))
-		utilities.LogWarn("ChatHandler", "tryHandleCreateSkillCommand",
+		utilities.LogWarn(component, op,
 			fmt.Sprintf("输出注入检测: 置信度=%.2f, 匹配模式=%v", outputInjectionResult.Confidence, outputInjectionResult.MatchedPatterns),
-			time.Since(start))
+			time.Since(pipelineStart),
+			fmt.Sprintf("trace_id=%s", pipelineTraceID),
+		)
 		return true
 	}
 
-	// 将 AI 生成的技能内容上传到 S3，覆盖之前的空占位文件
+	// ── 步骤 12: S3 上传最终内容 ──
+	stepStart = time.Now()
 	handler.sendThinking(connectionID, models.SystemThinkingData{
 		Phase:   "skill_creation",
 		Thought: "正在将技能内容写入 S3...",
@@ -476,6 +845,14 @@ func (handler *ChatHandler) tryHandleCreateSkillCommand(
 	}, incomingMessage.SkillsId)
 
 	uploadErr := handler.s3Loader.UploadSkill(ctx, skillName, []byte(markdown))
+	utilities.LogNano(component, op, utilities.INFO, "IN_PROGRESS", time.Since(stepStart),
+		fmt.Sprintf("trace_id=%s", pipelineTraceID),
+		fmt.Sprintf("step=s3_upload"),
+		fmt.Sprintf("skill=%s", skillName),
+		fmt.Sprintf("content_size=%d", len(markdown)),
+		fmt.Sprintf("success=%t", uploadErr == nil),
+		fmt.Sprintf("step_ns=%d", time.Since(stepStart).Nanoseconds()),
+	)
 	if uploadErr != nil {
 		// S3 内部错误详情只记录服务器日志，不暴露给客户端
 		if isProductionMode() {
@@ -485,11 +862,15 @@ func (handler *ChatHandler) tryHandleCreateSkillCommand(
 			handler.sendSkillCreationError(connectionID, "s3_upload_failed",
 				"S3 文件上传失败，请检查 AWS 凭证权限或存储桶配置")
 		}
-		utilities.LogError("ChatHandler", "tryHandleCreateSkillCommand", uploadErr, time.Since(start))
+		utilities.LogError(component, op, uploadErr, time.Since(pipelineStart),
+			fmt.Sprintf("trace_id=%s", pipelineTraceID),
+			fmt.Sprintf("step=s3_upload"),
+		)
 		return true
 	}
 
-	// 重新从 S3 加载所有技能到注册中心
+	// ── 步骤 13: 重新加载技能注册中心 ──
+	stepStart = time.Now()
 	handler.sendThinking(connectionID, models.SystemThinkingData{
 		Phase:   "skill_creation",
 		Thought: "正在刷新技能注册中心...",
@@ -501,16 +882,31 @@ func (handler *ChatHandler) tryHandleCreateSkillCommand(
 
 	reloadedSkills, reloadErr := handler.s3Loader.LoadAllSkills(ctx)
 	if reloadErr != nil {
-		utilities.LogError("ChatHandler", "tryHandleCreateSkillCommand", reloadErr,
-			time.Since(start), "S3 重新加载失败，但文件已写入")
+		utilities.LogError(component, op, reloadErr,
+			time.Since(pipelineStart),
+			fmt.Sprintf("trace_id=%s", pipelineTraceID),
+			fmt.Sprintf("step=registry_reload"),
+			"S3 重新加载失败，但文件已写入",
+		)
 	} else {
 		if reloadRegistryErr := handler.registry.Reload(reloadedSkills); reloadRegistryErr != nil {
-			utilities.LogError("ChatHandler", "tryHandleCreateSkillCommand", reloadRegistryErr,
-				time.Since(start), "注册中心 Reload 失败，但文件已写入")
+			utilities.LogError(component, op, reloadRegistryErr,
+				time.Since(pipelineStart),
+				fmt.Sprintf("trace_id=%s", pipelineTraceID),
+				fmt.Sprintf("step=registry_reload"),
+				"注册中心 Reload 失败，但文件已写入",
+			)
 		}
 	}
+	utilities.LogNano(component, op, utilities.INFO, "IN_PROGRESS", time.Since(stepStart),
+		fmt.Sprintf("trace_id=%s", pipelineTraceID),
+		fmt.Sprintf("step=registry_reload"),
+		fmt.Sprintf("reload_success=%t", reloadErr == nil),
+		fmt.Sprintf("step_ns=%d", time.Since(stepStart).Nanoseconds()),
+	)
 
-	// 向客户端发送技能创建成功响应
+	// ── 步骤 14: 发送成功响应 ──
+	stepStart = time.Now()
 	storageURI := handler.s3Loader.StorageURI(skillName)
 	preview := markdown
 	if len(preview) > skillCreationPreviewSize {
@@ -525,24 +921,36 @@ func (handler *ChatHandler) tryHandleCreateSkillCommand(
 		Content:      successMessage,
 		FinishReason: "end_turn",
 		TokensUsed:   0,
-		LatencyMs:    time.Since(start).Milliseconds(),
+		LatencyMs:    time.Since(pipelineStart).Milliseconds(),
 		Metadata: map[string]interface{}{
 			"action":      "skill_created",
 			"skill_name":  skillName,
 			"storage_uri": storageURI,
 			"size":        len(markdown),
 			"llm_latency": llmLatency.Milliseconds(),
-			"total_ms":    time.Since(start).Milliseconds(),
+			"total_ms":    time.Since(pipelineStart).Milliseconds(),
 		},
 	}, incomingMessage.SkillsId)
+
+	utilities.LogNano(component, op, utilities.INFO, "IN_PROGRESS", time.Since(stepStart),
+		fmt.Sprintf("trace_id=%s", pipelineTraceID),
+		fmt.Sprintf("step=success_response"),
+		fmt.Sprintf("step_ns=%d", time.Since(stepStart).Nanoseconds()),
+	)
 
 	// 推送更新后的技能列表给当前连接
 	handler.OnConnectionReady(ctx, connectionID)
 
-	utilities.LogSuccess("ChatHandler", "tryHandleCreateSkillCommand", time.Since(start),
+	// ── 流水线完成汇总 ──
+	pipelineElapsed := time.Since(pipelineStart)
+	utilities.LogNano(component, op, utilities.INFO, "OK", pipelineElapsed,
+		fmt.Sprintf("trace_id=%s", pipelineTraceID),
+		fmt.Sprintf("step=pipeline_complete"),
 		fmt.Sprintf("skill=/%s", skillName),
 		fmt.Sprintf("size=%d", len(markdown)),
 		fmt.Sprintf("storage=%s", storageURI),
+		fmt.Sprintf("llm_latency_ns=%d", llmLatency.Nanoseconds()),
+		fmt.Sprintf("total_pipeline_ns=%d", pipelineElapsed.Nanoseconds()),
 	)
 
 	return true

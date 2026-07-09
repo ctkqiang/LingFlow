@@ -1,6 +1,9 @@
 package utilities
 
 import (
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"runtime"
@@ -60,6 +63,10 @@ var (
 	errorCallback  func(string)
 	goroutineSeq   int
 	goroutineMutex sync.Mutex
+
+	// CloudWatchMode 为 true 时，所有日志函数在输出人类可读格式的同时，
+	// 也会向 stderr 输出一行 CloudWatch 兼容的 JSON 结构化日志。
+	CloudWatchMode bool
 )
 
 // SetLogLevel 解析字符串级别名称并设置全局阈值。
@@ -117,6 +124,11 @@ func Log(level LogLevel, format string, a ...interface{}) {
 	if level == ERROR && errorCallback != nil {
 		errorCallback(logLine)
 	}
+
+	// CloudWatch 双输出：简单日志也同时输出 JSON 格式
+	if CloudWatchMode {
+		emitCloudWatchJSON("general", "log", level, "LOG", formattedMessage, 0, nil)
+	}
 }
 
 // Logf 输出带有标准字段（Status、Type、Memory、Routine、Elapsed）的结构化块日志，
@@ -153,6 +165,11 @@ func Logf(component, operation string, level LogLevel, status string, elapsed ti
 
 	if level == ERROR && errorCallback != nil {
 		errorCallback(header + " " + status)
+	}
+
+	// CloudWatch 双输出：在人类可读格式之外，同时输出 JSON 结构化日志
+	if CloudWatchMode {
+		emitCloudWatchJSON(component, operation, level, status, header, elapsed, details)
 	}
 }
 
@@ -227,7 +244,13 @@ func RetryWithBackoff(name string, maxAttempts int, backoff time.Duration, fn fu
 	return fmt.Errorf("%s: exhausted %d retries: %w", name, maxAttempts, lastError)
 }
 
-func init() { SetLogLevel(os.Getenv("LOG_LEVEL")) }
+func init() {
+	SetLogLevel(os.Getenv("LOG_LEVEL"))
+	// 如果环境变量 CLOUDWATCH_LOGGING=true，自动启用 CloudWatch JSON 模式
+	if strings.EqualFold(os.Getenv("CLOUDWATCH_LOGGING"), "true") {
+		CloudWatchMode = true
+	}
+}
 
 func levelColor(logLevel LogLevel) string {
 	switch logLevel {
@@ -319,4 +342,128 @@ func GetEnv(key, fallback string) string {
 		return envValue
 	}
 	return fallback
+}
+
+// ---------------------------------------------------------------------------
+// CloudWatch JSON 结构化日志
+// ---------------------------------------------------------------------------
+
+// SetCloudWatchMode 启用或禁用 CloudWatch JSON 双输出模式。
+// 启用后，所有日志函数在输出人类可读格式的同时，也会向 stderr 输出 NDJSON 行。
+func SetCloudWatchMode(enabled bool) {
+	CloudWatchMode = enabled
+}
+
+// NewTraceID 生成唯一的追踪标识符，格式为 trc-{unix_nano}-{random_hex_8}。
+// 用于在分布式系统中关联同一请求的多条日志。
+func NewTraceID() string {
+	randomBytes := make([]byte, 4)
+	_, _ = rand.Read(randomBytes)
+	return fmt.Sprintf("trc-%d-%s", time.Now().UnixNano(), hex.EncodeToString(randomBytes))
+}
+
+// runtimeSnapshot 捕获当前运行时指标快照，包括协程数、堆内存、系统内存、
+// GC 次数、CPU 核心数以及进程运行时长。
+func runtimeSnapshot() map[string]interface{} {
+	var memoryStats runtime.MemStats
+	runtime.ReadMemStats(&memoryStats)
+	return map[string]interface{}{
+		"goroutine_count":    runtime.NumGoroutine(),
+		"heap_alloc_bytes":   memoryStats.Alloc,
+		"heap_alloc_mb":      float64(memoryStats.Alloc) / 1024 / 1024,
+		"sys_memory_bytes":   memoryStats.Sys,
+		"sys_memory_mb":      float64(memoryStats.Sys) / 1024 / 1024,
+		"num_gc":             memoryStats.NumGC,
+		"cpu_count":          runtime.NumCPU(),
+		"uptime_ns":          time.Since(startTime).Nanoseconds(),
+		"uptime_human":       fmtElapsed(time.Since(startTime)),
+	}
+}
+
+// LogJSON 输出一行 CloudWatch 兼容的 JSON 结构化日志到 stderr（NDJSON 格式）。
+// 每行包含纳秒级时间戳、运行时指标、调用者信息、追踪 ID 等完整上下文。
+func LogJSON(component, operation string, level LogLevel, status, message string, elapsed time.Duration, details map[string]string) {
+	now := time.Now()
+	hostname, _ := os.Hostname()
+
+	var memoryStats runtime.MemStats
+	runtime.ReadMemStats(&memoryStats)
+
+	entry := map[string]interface{}{
+		"timestamp":          now.Format(time.RFC3339Nano),
+		"timestamp_unix_nano": now.UnixNano(),
+		"level":              level.String(),
+		"component":          component,
+		"operation":          operation,
+		"status":             status,
+		"message":            message,
+		"elapsed_ns":         elapsed.Nanoseconds(),
+		"elapsed_human":      fmtElapsed(elapsed),
+		"memory_alloc_bytes": memoryStats.Alloc,
+		"memory_alloc_mb":    float64(memoryStats.Alloc) / 1024 / 1024,
+		"goroutine_count":    runtime.NumGoroutine(),
+		"task_id":            nextTaskID(),
+		"caller":             callerName(2),
+		"trace_id":           NewTraceID(),
+		"details":            details,
+		"app":                APP_NAME,
+		"version":            VERSION,
+		"pid":                os.Getpid(),
+		"hostname":           hostname,
+	}
+
+	jsonBytes, err := json.Marshal(entry)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, `{"error":"json_marshal_failed","raw":"%s"}`+"\n", message)
+		return
+	}
+	fmt.Fprintln(os.Stderr, string(jsonBytes))
+}
+
+// emitCloudWatchJSON 是内部辅助函数，当 CloudWatchMode 为 true 时，
+// 将结构化日志以 JSON 格式输出到 stderr。由现有日志函数调用。
+func emitCloudWatchJSON(component, operation string, level LogLevel, status, message string, elapsed time.Duration, details []string) {
+	detailMap := make(map[string]string, len(details))
+	for _, detail := range details {
+		key, value, ok := strings.Cut(detail, "=")
+		if ok {
+			detailMap[strings.TrimSpace(key)] = strings.TrimSpace(value)
+		} else {
+			detailMap[detail] = ""
+		}
+	}
+	LogJSON(component, operation, level, status, message, elapsed, detailMap)
+}
+
+// LogVerbose 以 VERBOSE 级别输出最详细的日志，包含所有运行时指标。
+// 适用于需要完整诊断信息的场景，如性能分析和审计追踪。
+func LogVerbose(component, operation, msg string, details ...string) {
+	snapshot := runtimeSnapshot()
+
+	// 将运行时快照注入到详情中
+	runtimeDetails := []string{
+		fmt.Sprintf("goroutines=%d", snapshot["goroutine_count"]),
+		fmt.Sprintf("heap_mb=%.2f", snapshot["heap_alloc_mb"]),
+		fmt.Sprintf("sys_mb=%.2f", snapshot["sys_memory_mb"]),
+		fmt.Sprintf("num_gc=%d", snapshot["num_gc"]),
+		fmt.Sprintf("cpu_count=%d", snapshot["cpu_count"]),
+		fmt.Sprintf("uptime_ns=%d", snapshot["uptime_ns"]),
+		fmt.Sprintf("uptime=%s", snapshot["uptime_human"]),
+		fmt.Sprintf("message=%s", msg),
+	}
+	allDetails := append(runtimeDetails, details...)
+	Logf(component, operation, VERBOSE, "VERBOSE", 0, allDetails...)
+}
+
+// LogNano 与 Logf 类似，但在人类可读模式下也始终包含纳秒级精度的计时信息。
+// 适用于需要极高精度时间测量的性能关键路径。
+func LogNano(component, operation string, level LogLevel, status string, elapsed time.Duration, details ...string) {
+	// 在详情中注入纳秒级计时
+	nanoDetails := []string{
+		fmt.Sprintf("elapsed_ns=%d", elapsed.Nanoseconds()),
+		fmt.Sprintf("elapsed_nano=%dns", elapsed.Nanoseconds()),
+		fmt.Sprintf("timestamp_nano=%d", time.Now().UnixNano()),
+	}
+	allDetails := append(nanoDetails, details...)
+	Logf(component, operation, level, status, elapsed, allDetails...)
 }
