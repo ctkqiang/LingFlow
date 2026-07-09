@@ -127,7 +127,7 @@ func serveWebSocketHTTPServer(
 	websocketHTTPServer := &http.Server{
 		Addr:              websocketServerAddress,
 		Handler:           websocketServeMux,
-		ReadHeaderTimeout: 5 * time.Second,
+		ReadHeaderTimeout: 30 * time.Second,
 	}
 
 	serverErrorChannel := make(chan error, 1)
