@@ -9,10 +9,17 @@ import (
 	"time"
 )
 
+// MessageSender 定义了向连接发送消息的能力。
+type MessageSender interface {
+	SendMessage(connectionID string, payload []byte) error
+}
+
 // ChatHandler 通过技能增强的 LLM 管道处理传入的 WebSocket 消息，并生成响应消息。
 type ChatHandler struct {
-	executor *SkillExecutor
-	registry *SkillRegistry
+	executor      *SkillExecutor
+	registry      *SkillRegistry
+	s3Loader      *S3SkillLoader
+	messageSender MessageSender
 }
 
 // NewChatHandler 创建一个完整注入依赖的 ChatHandler 实例。
@@ -20,6 +27,21 @@ func NewChatHandler(registry *SkillRegistry, llmService LLMService) *ChatHandler
 	return &ChatHandler{
 		executor: NewSkillExecutor(registry, llmService),
 		registry: registry,
+	}
+}
+
+// NewChatHandlerWithS3Loader 创建带 S3 技能加载器的 ChatHandler。
+func NewChatHandlerWithS3Loader(
+	registry *SkillRegistry,
+	llmService LLMService,
+	s3Loader *S3SkillLoader,
+	messageSender MessageSender,
+) *ChatHandler {
+	return &ChatHandler{
+		executor:      NewSkillExecutor(registry, llmService),
+		registry:      registry,
+		s3Loader:      s3Loader,
+		messageSender: messageSender,
 	}
 }
 
@@ -62,6 +84,10 @@ func (handler *ChatHandler) HandleIncomingMessage(
 		responseMessage, err = handler.handleUserChat(ctx, incomingMessage)
 	case models.SystemChat:
 		responseMessage, err = handler.handleSystemChat(incomingMessage)
+	case models.SystemThinking:
+		responseMessage, err = handler.handleSystemMessage(incomingMessage)
+	case models.SystemResponse:
+		responseMessage, err = handler.handleSystemMessage(incomingMessage)
 	case models.HeartbeatChat:
 		responseMessage, err = handler.handleHeartbeat(incomingMessage)
 	default:
@@ -186,6 +212,13 @@ func (handler *ChatHandler) handleHeartbeat(
 	}, nil
 }
 
+// handleSystemMessage 处理 system_thinking 和 system_response 类型的消息，直接透传。
+func (handler *ChatHandler) handleSystemMessage(
+	message models.WSMessage,
+) (models.WSMessage, error) {
+	return message, nil
+}
+
 // parseIncomingMessage 将原始载荷反序列化为 WSMessage。
 func (handler *ChatHandler) parseIncomingMessage(rawPayload []byte) (models.WSMessage, error) {
 	var message models.WSMessage
@@ -209,6 +242,280 @@ func (handler *ChatHandler) buildErrorResponse(event, errorMessage string) model
 		Data:      json.RawMessage(dataBytes),
 		Timestamp: time.Now(),
 	}
+}
+
+// HandleUserChatWithStreaming 是 ChatStreamer 接口的实现。
+// 检查消息是否为 user_chat，是则异步启动流式处理并返回 true。
+func (handler *ChatHandler) HandleUserChatWithStreaming(
+	ctx context.Context,
+	connectionID string,
+	messagePayload []byte,
+) bool {
+	if handler.messageSender == nil {
+		return false
+	}
+
+	var incomingMessage models.WSMessage
+	if err := json.Unmarshal(messagePayload, &incomingMessage); err != nil {
+		return false
+	}
+
+	if incomingMessage.Type != models.UserChat {
+		return false
+	}
+
+	if err := ValidateWSMessage(incomingMessage); err != nil {
+		handler.sendError(connectionID, "validation_error", err.Error())
+		return true
+	}
+
+	go handler.processUserChatStream(ctx, connectionID, incomingMessage)
+	return true
+}
+
+func (handler *ChatHandler) processUserChatStream(
+	ctx context.Context,
+	connectionID string,
+	incomingMessage models.WSMessage,
+) {
+	start := time.Now()
+	utilities.LogStart("ChatHandler", "processUserChatStream")
+
+	var userData models.UserChatData
+	if err := json.Unmarshal(incomingMessage.Data, &userData); err != nil {
+		handler.sendError(connectionID, "parse_error", err.Error())
+		return
+	}
+
+	if userData.Message == "" {
+		handler.sendError(connectionID, "validation_error", "用户消息内容为空")
+		return
+	}
+
+	skillSelectionStart := time.Now()
+
+	var availableSkillIDs []string
+	if len(userData.AvailableSkills) > 0 {
+		availableSkillIDs = userData.AvailableSkills
+	} else if handler.s3Loader != nil {
+		loadedSkills, err := handler.s3Loader.LoadAllSkills(ctx)
+		if err != nil {
+			utilities.LogError("ChatHandler", "LoadAllSkills", err, 0)
+		} else {
+			for _, skill := range loadedSkills {
+				if _, exists := handler.registry.GetSkill(skill.SkillIdentifier); !exists {
+					_ = handler.registry.RegisterSkill(skill)
+				}
+				availableSkillIDs = append(availableSkillIDs, skill.SkillIdentifier)
+			}
+		}
+	}
+
+	var selectedSkill *models.SkillDefinition
+	var matchedResults []models.RetrievalResult
+
+	if userData.SelectedSkill != "" {
+		if skill, exists := handler.registry.GetSkill(userData.SelectedSkill); exists {
+			selectedSkill = &skill
+			matchedResults = []models.RetrievalResult{
+				{Meta: skill.Metadata(), Score: 1.0},
+			}
+		}
+	} else if incomingMessage.SkillsId != "" {
+		if skill, exists := handler.registry.GetSkill(incomingMessage.SkillsId); exists {
+			selectedSkill = &skill
+			matchedResults = []models.RetrievalResult{
+				{Meta: skill.Metadata(), Score: 1.0},
+			}
+		}
+	} else {
+		matchedResults = handler.registry.RetrieveSkills(userData.Message)
+		if len(matchedResults) > 0 {
+			if skill, exists := handler.registry.GetSkill(matchedResults[0].Meta.SkillIdentifier); exists {
+				selectedSkill = &skill
+			}
+		}
+	}
+
+	skillMatches := make([]models.SkillMatch, 0, len(matchedResults))
+	for _, r := range matchedResults {
+		skillMatches = append(skillMatches, models.SkillMatch{
+			SkillIdentifier:  r.Meta.SkillIdentifier,
+			SkillDisplayName: r.Meta.SkillDisplayName,
+			MatchScore:       r.Score,
+			SkillCategory:    r.Meta.SkillCategory,
+		})
+	}
+
+	var selectedSkillMatch *models.SkillMatch
+	if selectedSkill != nil {
+		selectedSkillMatch = &models.SkillMatch{
+			SkillIdentifier:  selectedSkill.SkillIdentifier,
+			SkillDisplayName: selectedSkill.SkillDisplayName,
+			MatchScore:       1.0,
+			SkillCategory:    selectedSkill.SkillCategory,
+		}
+	}
+
+	thinkingMsg := models.SystemThinkingData{
+		Phase:         "skill_selection",
+		SkillMatches:  skillMatches,
+		SelectedSkill: selectedSkillMatch,
+		Thought:       fmt.Sprintf("已完成技能匹配，找到 %d 个候选技能", len(matchedResults)),
+		Metadata: map[string]interface{}{
+			"latency_ms": time.Since(skillSelectionStart).Milliseconds(),
+			"candidates": len(matchedResults),
+			"available":  len(availableSkillIDs),
+		},
+	}
+	handler.sendThinking(connectionID, thinkingMsg, incomingMessage.SkillsId)
+
+	llmStart := time.Now()
+	thinkingMsg2 := models.SystemThinkingData{
+		Phase:         "llm_generation",
+		SkillMatches:  skillMatches,
+		SelectedSkill: selectedSkillMatch,
+		Thought:       "正在生成响应，请稍候...",
+		Metadata: map[string]interface{}{
+			"started_at": llmStart.Format(time.RFC3339),
+		},
+	}
+	handler.sendThinking(connectionID, thinkingMsg2, incomingMessage.SkillsId)
+
+	var execResult ExecutionResult
+	var execErr error
+
+	if selectedSkill != nil {
+		execResult, execErr = handler.executor.ExecuteWithSkill(ctx, userData, selectedSkill.SkillIdentifier)
+	} else {
+		execResult, execErr = handler.executor.Execute(ctx, userData)
+	}
+
+	llmLatency := time.Since(llmStart)
+
+	if execErr != nil {
+		handler.sendError(connectionID, "generation_error", execErr.Error())
+		utilities.LogError("ChatHandler", "processUserChatStream", execErr, time.Since(start))
+		return
+	}
+
+	finishReason := execResult.Response.FinishReason
+	tokensUsed := execResult.Response.TokensUsed
+	modelName := ""
+
+	responseData := models.SystemResponseData{
+		Content:      execResult.Response.Content,
+		SkillUsed:    selectedSkillMatch,
+		FinishReason: finishReason,
+		TokensUsed:   tokensUsed,
+		LatencyMs:    llmLatency.Milliseconds(),
+		Metadata: map[string]interface{}{
+			"model": modelName,
+		},
+	}
+	handler.sendResponse(connectionID, responseData, incomingMessage.SkillsId)
+
+	utilities.LogSuccess("ChatHandler", "processUserChatStream", time.Since(start),
+		fmt.Sprintf("conn=%s", connectionID),
+		fmt.Sprintf("skill=%s", func() string {
+			if selectedSkill != nil {
+				return selectedSkill.SkillIdentifier
+			}
+			return "none"
+		}()),
+	)
+}
+
+func (handler *ChatHandler) sendThinking(
+	connectionID string,
+	data models.SystemThinkingData,
+	skillID string,
+) {
+	if handler.messageSender == nil {
+		return
+	}
+
+	dataBytes, err := json.Marshal(data)
+	if err != nil {
+		utilities.LogError("ChatHandler", "sendThinking", err, 0)
+		return
+	}
+
+	msg := models.WSMessage{
+		Type:      models.SystemThinking,
+		Data:      json.RawMessage(dataBytes),
+		SkillsId:  skillID,
+		Timestamp: time.Now(),
+	}
+
+	payload, err := json.Marshal(msg)
+	if err != nil {
+		utilities.LogError("ChatHandler", "sendThinking", err, 0)
+		return
+	}
+
+	if err := handler.messageSender.SendMessage(connectionID, payload); err != nil {
+		utilities.LogError("ChatHandler", "sendThinking", err, 0)
+	}
+}
+
+func (handler *ChatHandler) sendResponse(
+	connectionID string,
+	data models.SystemResponseData,
+	skillID string,
+) {
+	if handler.messageSender == nil {
+		return
+	}
+
+	dataBytes, err := json.Marshal(data)
+	if err != nil {
+		utilities.LogError("ChatHandler", "sendResponse", err, 0)
+		return
+	}
+
+	msg := models.WSMessage{
+		Type:      models.SystemResponse,
+		Data:      json.RawMessage(dataBytes),
+		SkillsId:  skillID,
+		Timestamp: time.Now(),
+	}
+
+	payload, err := json.Marshal(msg)
+	if err != nil {
+		utilities.LogError("ChatHandler", "sendResponse", err, 0)
+		return
+	}
+
+	if err := handler.messageSender.SendMessage(connectionID, payload); err != nil {
+		utilities.LogError("ChatHandler", "sendResponse", err, 0)
+	}
+}
+
+func (handler *ChatHandler) sendError(
+	connectionID string,
+	event string,
+	errorMessage string,
+) {
+	if handler.messageSender == nil {
+		return
+	}
+
+	errorData := models.SystemChatData{
+		Event:   event,
+		Message: errorMessage,
+	}
+
+	dataBytes, _ := json.Marshal(errorData)
+
+	msg := models.WSMessage{
+		Type:      models.SystemChat,
+		Data:      json.RawMessage(dataBytes),
+		Timestamp: time.Now(),
+	}
+
+	payload, _ := json.Marshal(msg)
+	_ = handler.messageSender.SendMessage(connectionID, payload)
 }
 
 // GetRegistry 返回底层的技能注册中心，供外部注册使用。

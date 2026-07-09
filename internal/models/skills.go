@@ -74,6 +74,18 @@ type SkillMetadata struct {
 	SchemaVersion    int      // 编辑时递增；用于使索引缓存失效
 }
 
+// Metadata 返回技能定义的元数据副本。
+func (def SkillDefinition) Metadata() SkillMetadata {
+	return SkillMetadata{
+		SkillIdentifier:  def.SkillIdentifier,
+		SkillDisplayName: def.SkillDisplayName,
+		SkillDescription: def.SkillDescription,
+		SearchKeywords:   def.SearchKeywords,
+		SkillCategory:    def.SkillCategory,
+		SchemaVersion:    def.SchemaVersion,
+	}
+}
+
 // NewSkillStoragePath 根据存储桶名称和技能名称构建一个经过校验的存储路径，
 // 适用于写入场景（创建/更新技能文件时使用）。
 func NewSkillStoragePath(bucketName, skillName string) (SkillStoragePath, error) {

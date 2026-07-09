@@ -30,7 +30,7 @@ const (
 //   - server : EC2/本地 HTTP(S) WebSocket 服务
 //
 // Address:
-//   - server 模式监听地址，例如 ":9000"
+//   - server 模式监听地址，例如 ":4030"
 //
 // CertFile / KeyFile:
 //   - 两者同时配置时启用 ListenAndServeTLS，直接提供 wss://
@@ -47,7 +47,7 @@ func Run(ctx context.Context) error {
 
 	return ServeWebSocket(ctx, WebSocketServerConfig{
 		Runtime:  ResolveWebSocketRuntime(),
-		Address:  utilities.GetEnv("WSS_ADDR", ":9000"),
+		Address:  utilities.GetEnv("WSS_ADDR", ":4030"),
 		CertFile: os.Getenv("WSS_CERT_FILE"),
 		KeyFile:  os.Getenv("WSS_KEY_FILE"),
 	})
@@ -113,15 +113,42 @@ func serveWebSocketHTTPServer(
 	websocketServeMux := http.NewServeMux()
 	eventStore := events.NewInMemoryEventStore()
 	websocketConnectionManager := connections.NewEventSourcedWebsocketGatewayConnectionManager(eventStore)
+
+	skillRegistry := NewSkillRegistry()
+	bedrockConfig := NewBedrockConfig()
+	llmService, err := NewBedrockLLMService(runtimeContext, bedrockConfig)
+	if err != nil {
+		utilities.LogError("Services", "serveWebSocketHTTPServer", err, 0, "初始化 Bedrock LLM 服务失败")
+		return fmt.Errorf("初始化 Bedrock LLM 服务失败: %w", err)
+	}
+
+	s3Loader := NewS3SkillLoader()
+	if s3Loader != nil {
+		loadedSkills, loadErr := s3Loader.LoadAllSkills(runtimeContext)
+		if loadErr != nil {
+			utilities.LogError("Services", "serveWebSocketHTTPServer", loadErr, 0, "从 S3 加载技能失败")
+		} else {
+			for _, skill := range loadedSkills {
+				_ = skillRegistry.RegisterSkill(skill)
+			}
+			utilities.LogProgress("Services", "serveWebSocketHTTPServer",
+				fmt.Sprintf("从 S3 加载了 %d 个技能", len(loadedSkills)))
+		}
+	}
+
+	chatHandler := NewChatHandlerWithS3Loader(skillRegistry, llmService, s3Loader, websocketConnectionManager)
+
 	connections.RegisterWebSocketHandlers(
 		websocketServeMux,
 		websocketConnectionManager,
 		connections.NewDefaultUpgrader(),
+		chatHandler,
+		chatHandler,
 	)
 
 	websocketServerAddress := websocketServerConfiguration.Address
 	if websocketServerAddress == "" {
-		websocketServerAddress = ":9000"
+		websocketServerAddress = ":4030"
 	}
 
 	websocketHTTPServer := &http.Server{

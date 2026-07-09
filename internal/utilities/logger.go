@@ -55,10 +55,10 @@ const (
 )
 
 var (
-	CurrentLevel  = INFO
-	startTime     = time.Now()
-	errorCallback func(string)
-	goroutineSeq  int
+	CurrentLevel   = INFO
+	startTime      = time.Now()
+	errorCallback  func(string)
+	goroutineSeq   int
 	goroutineMutex sync.Mutex
 )
 

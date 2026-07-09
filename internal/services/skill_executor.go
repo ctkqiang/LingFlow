@@ -262,7 +262,9 @@ func ValidateWSMessage(msg models.WSMessage) error {
 		return fmt.Errorf("消息类型为必填项")
 	}
 
-	if msg.Type != models.UserChat && msg.Type != models.SystemChat && msg.Type != models.HeartbeatChat {
+	if msg.Type != models.UserChat && msg.Type != models.SystemChat && 
+		msg.Type != models.SystemThinking && msg.Type != models.SystemResponse && 
+		msg.Type != models.HeartbeatChat {
 		return fmt.Errorf("无效的消息类型: %s", msg.Type)
 	}
 
@@ -305,6 +307,22 @@ func ValidateWSMessage(msg models.WSMessage) error {
 		}
 		if heartbeatData.Nonce == "" {
 			return fmt.Errorf("heartbeat_chat nonce 为必填项")
+		}
+	case models.SystemThinking:
+		var thinkingData models.SystemThinkingData
+		if err := json.Unmarshal(msg.Data, &thinkingData); err != nil {
+			return fmt.Errorf("system_thinking 数据不符合 SystemThinkingData 结构: %w", err)
+		}
+		if thinkingData.Phase == "" {
+			return fmt.Errorf("system_thinking phase 为必填项")
+		}
+	case models.SystemResponse:
+		var responseData models.SystemResponseData
+		if err := json.Unmarshal(msg.Data, &responseData); err != nil {
+			return fmt.Errorf("system_response 数据不符合 SystemResponseData 结构: %w", err)
+		}
+		if responseData.Content == "" {
+			return fmt.Errorf("system_response content 为必填项")
 		}
 	}
 

@@ -26,6 +26,10 @@ type MessageHandler interface {
 	HandleIncomingMessage(ctx context.Context, rawPayload []byte) ([]byte, error)
 }
 
+type ChatStreamer interface {
+	HandleUserChatWithStreaming(ctx context.Context, connectionID string, messagePayload []byte) bool
+}
+
 const WebSocketChatEndpointPathPrefix = "/chat/"
 
 type AWSWebSokcetGateway struct{}
@@ -217,6 +221,13 @@ func (connectionManager *WebsokcetConnectionManager) SendMessageToConnection(
 	}
 
 	return connectionManager.sendMessageToConnection(state.conn, messagePayload)
+}
+
+func (connectionManager *WebsokcetConnectionManager) SendMessage(
+	connectionID string,
+	payload []byte,
+) error {
+	return connectionManager.SendMessageToConnection(connectionID, payload)
 }
 
 func (connectionManager *WebsokcetConnectionManager) sendMessageToConnection(conn *websocket.Conn, payload []byte) error {
@@ -459,22 +470,18 @@ func (connectionManager *WebsokcetConnectionManager) handleHeartbeatTimeout(conn
 
 func WebsocketHandler(upgrader *websocket.Upgrader) {
 	websocketConnectionManager := NewWebsocketGatewayConnectionManager()
-	RegisterWebSocketHandlers(http.DefaultServeMux, websocketConnectionManager, upgrader)
+	RegisterWebSocketHandlers(http.DefaultServeMux, websocketConnectionManager, upgrader, nil, nil)
 }
 
 func RegisterWebSocketHandlers(
 	websocketServeMux *http.ServeMux,
 	connectionManager *WebsokcetConnectionManager,
 	upgrader *websocket.Upgrader,
-	messageHandlers ...MessageHandler,
+	messageHandler MessageHandler,
+	chatStreamer ChatStreamer,
 ) {
 	if upgrader == nil {
 		upgrader = NewDefaultUpgrader()
-	}
-
-	var messageHandler MessageHandler
-	if len(messageHandlers) > 0 && messageHandlers[0] != nil {
-		messageHandler = messageHandlers[0]
 	}
 
 	websocketServeMux.HandleFunc(WebSocketChatEndpointPathPrefix, func(
@@ -532,6 +539,15 @@ func RegisterWebSocketHandlers(
 				},
 				map[string]string{"component": "connections"},
 			)
+
+			if chatStreamer != nil {
+				handled := chatStreamer.HandleUserChatWithStreaming(
+					httpRequest.Context(), connectionIdentifier, messagePayload,
+				)
+				if handled {
+					continue
+				}
+			}
 
 			if messageHandler != nil {
 				responsePayload, handleError := messageHandler.HandleIncomingMessage(

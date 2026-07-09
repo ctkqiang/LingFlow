@@ -51,36 +51,36 @@ type LLMService interface {
 // NewBedrockConfig 从环境变量加载 Bedrock 配置。
 //
 // 支持的环境变量：
-//   - BEDROCK_REGION     : Bedrock 所在的 AWS 区域（默认: ap-east-1）
-//   - BEDROCK_MODEL_ID   : 模型标识符（默认: anthropic.claude-3-5-sonnet-20241022-v2:0）
-//   - BEDROCK_MAX_TOKENS  : 响应最大 token 数（默认: 2048）
-//   - BEDROCK_TEMPERATURE : 采样温度 0.0-1.0（默认: 0.7）
-//   - BEDROCK_TOP_P       : Top-p 核采样 0.0-1.0（默认: 0.9）
-//   - BEDROCK_TIMEOUT     : 请求超时时长（默认: 60s）
+//   - AWS_BEDROCK_REGION     : Bedrock 所在的 AWS 区域（默认: ap-east-1）
+//   - AWS_BEDROCK_MODEL_ID   : 模型标识符（默认: anthropic.claude-3-5-sonnet-20241022-v2:0）
+//   - AWS_BEDROCK_MAX_TOKENS  : 响应最大 token 数（默认: 2048）
+//   - AWS_BEDROCK_TEMPERATURE : 采样温度 0.0-1.0（默认: 0.7）
+//   - AWS_BEDROCK_TOP_P       : Top-p 核采样 0.0-1.0（默认: 0.9）
+//   - AWS_BEDROCK_TIMEOUT     : 请求超时时长（默认: 60s）
 func NewBedrockConfig() BedrockConfig {
-	timeout, _ := time.ParseDuration(utilities.GetEnv("BEDROCK_TIMEOUT", "60s"))
+	timeout, _ := time.ParseDuration(utilities.GetEnv("AWS_BEDROCK_TIMEOUT", "60s"))
 	if timeout == 0 {
 		timeout = 60 * time.Second
 	}
 
 	maxTokens := 2048
-	if envValue := utilities.GetEnv("BEDROCK_MAX_TOKENS", ""); envValue != "" {
+	if envValue := utilities.GetEnv("AWS_BEDROCK_MAX_TOKENS", ""); envValue != "" {
 		fmt.Sscanf(envValue, "%d", &maxTokens)
 	}
 
 	var temperature float32 = 0.7
-	if envValue := utilities.GetEnv("BEDROCK_TEMPERATURE", ""); envValue != "" {
+	if envValue := utilities.GetEnv("AWS_BEDROCK_TEMPERATURE", ""); envValue != "" {
 		fmt.Sscanf(envValue, "%f", &temperature)
 	}
 
 	var topP float32 = 0.9
-	if envValue := utilities.GetEnv("BEDROCK_TOP_P", ""); envValue != "" {
+	if envValue := utilities.GetEnv("AWS_BEDROCK_TOP_P", ""); envValue != "" {
 		fmt.Sscanf(envValue, "%f", &topP)
 	}
 
 	return BedrockConfig{
-		Region:      utilities.GetEnv("BEDROCK_REGION", utilities.AWSRegion("ap-east-1")),
-		ModelID:     utilities.GetEnv("BEDROCK_MODEL_ID", "anthropic.claude-3-5-sonnet-20241022-v2:0"),
+		Region:      utilities.GetEnv("AWS_BEDROCK_REGION", utilities.AWSRegion("ap-east-1")),
+		ModelID:     utilities.GetEnv("AWS_BEDROCK_MODEL_ID", "anthropic.claude-3-5-sonnet-20241022-v2:0"),
 		MaxTokens:   maxTokens,
 		Temperature: temperature,
 		TopP:        topP,
