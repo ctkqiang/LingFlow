@@ -131,6 +131,7 @@ func serveWebSocketHTTPServer(
 	}
 
 	serverErrorChannel := make(chan error, 1)
+
 	go func() {
 		utilities.LogProgress(
 			"Services",
