@@ -1,0 +1,69 @@
+@startuml
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam componentStyle rectangle
+skinparam arrowColor #333333
+skinparam rectangleBorderColor #333333
+skinparam rectangleBackgroundColor #FFFFFF
+
+title LingFlow 事件溯源架构概览
+
+rectangle "Command (命令)" as command {
+  [ConnectSession]
+  [DisconnectSession]
+  [SendMessage]
+  [HeartbeatPing]
+}
+
+rectangle "Aggregate Root (聚合根)\nChatSessionAggregate" as aggregate {
+  note right of aggregate
+    == 状态 ==
+    • Connected (bool)
+    • ReceivedMessageCount
+    • ProcessedMessageCount
+    • FailedMessageCount
+    • BroadcastMessageCount
+    • CurrentVersion
+
+    == 业务不变量 ==
+    • 已连接不能重复连接
+    • 未连接不能断开
+    • 未连接不能发消息
+  end note
+}
+
+rectangle "Domain Event (领域事件)" as event {
+  note right of event
+    == 字段 ==
+    • EventID
+    • StreamID
+    • AggregateID
+    • EventType
+    • Version
+    • OccurredAt
+    • Data
+    • Metadata
+  end note
+}
+
+rectangle "EventStore (事件存储)" as eventstore {
+  note right of eventstore
+    == 接口 ==
+    • Append(event) → 分配版本号
+    • LoadStream(streamID) → 事件历史
+    • LoadAll() → 全部事件
+
+    == 当前实现 ==
+    • InMemoryEventStore
+
+    == 可替换 ==
+    • DynamoDB
+    • PostgreSQL
+  end note
+}
+
+command --> aggregate : 执行命令
+aggregate --> event : 产生事件
+event --> eventstore : 追加存储
+
+@enduml
