@@ -1,0 +1,44 @@
+@startuml
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam arrowColor #333333
+skinparam sequence {
+  LifeLineBorderColor #333333
+  LifeLineBackgroundColor #E8E8E8
+  ParticipantBorderColor #333333
+  ParticipantBackgroundColor #FFFFFF
+  ParticipantPadding 15
+}
+
+title LingFlow 认证流程
+
+participant "客户端" as Client
+participant "服务端" as Server
+database "数据库" as DB
+
+== 1. 获取 Token (REST API) ==
+
+Client -> Server: POST /api/auth/token\n{ user_id, api_key }
+Server -> Server: 验证凭证
+Server -> DB: 查询用户信息
+DB --> Server: 用户信息
+Server -> Server: 生成 HMAC Token\nbase64url(userID|exp)\n.hex(hmacSha256)
+Server --> Client: { token, expires_at, user_id }
+
+== 2. WebSocket 连接认证 ==
+
+Client -> Server: WS Connect /chat/{uuid}\n?token=xxx\n或 Authorization: Bearer xxx
+Server -> Server: 验证 Token 签名
+Server -> Server: 验证 Token 过期时间
+Server -> Server: Origin 白名单检查
+Server -> Server: 单 IP 连接数限制
+
+alt 认证通过
+    Server --> Client: 101 Switching Protocols
+    Server -> Server: 记录连接事件
+    Server --> Client: system_skills_list\n(推送技能列表)
+else 认证失败
+    Server --> Client: 401 Unauthorized
+end
+
+@enduml
