@@ -333,6 +333,11 @@ func (handler *ChatHandler) processUserChatStream(
 	connectionID string,
 	incomingMessage models.WSMessage,
 ) {
+	var (
+		selectedSkill  *models.SkillDefinition
+		matchedResults []models.RetrievalResult
+	)
+
 	start := time.Now()
 	utilities.LogStart("ChatHandler", "processUserChatStream")
 
@@ -347,12 +352,14 @@ func (handler *ChatHandler) processUserChatStream(
 		return
 	}
 
+	// 拦截 #create_skill 命令，由独立的处理器完成创建流程
+	if handler.tryHandleCreateSkillCommand(ctx, connectionID, incomingMessage, userData) {
+		return
+	}
+
 	skillSelectionStart := time.Now()
 
 	availableSkillIDs := handler.registry.ListSkillIDs()
-
-	var selectedSkill *models.SkillDefinition
-	var matchedResults []models.RetrievalResult
 
 	if userData.SelectedSkill != "" {
 		if skill, exists := handler.registry.GetSkill(userData.SelectedSkill); exists {

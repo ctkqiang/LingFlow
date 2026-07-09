@@ -1,7 +1,9 @@
 package services
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"ling_flow/internal/models"
@@ -13,6 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/smithy-go"
 )
 
 const (
@@ -200,6 +203,95 @@ func (loader *S3SkillLoader) LoadAllSkills(ctx context.Context) ([]models.SkillD
 	)
 
 	return skills, nil
+}
+
+// UploadSkill 将技能 Markdown 内容上传到 S3。
+// 调用方必须先通过 SkillExists 检查重名，否则可能覆盖已有技能。
+//
+// 参数：
+//   - ctx        : 上下文
+//   - skillName  : 技能标识符（不含前缀和扩展名），例如 "trade_analyzer"
+//   - content    : 完整的 Markdown 文件内容
+//
+// 返回：S3 PutObject 失败时返回包装后的错误，成功时返回 nil。
+func (loader *S3SkillLoader) UploadSkill(ctx context.Context, skillName string, content []byte) error {
+	start := time.Now()
+	utilities.LogStart("S3SkillLoader", "UploadSkill")
+
+	if loader == nil {
+		return fmt.Errorf("S3 技能加载器未初始化")
+	}
+	if loader.bucket == "" {
+		return fmt.Errorf("S3 bucket 未配置，无法上传技能")
+	}
+
+	client, err := loader.getClient(ctx)
+	if err != nil {
+		return err
+	}
+
+	skillKey := loader.buildSkillKey(skillName)
+
+	_, err = client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket:      aws.String(loader.bucket),
+		Key:         aws.String(skillKey),
+		Body:        bytes.NewReader(content),
+		ContentType: aws.String("text/markdown; charset=utf-8"),
+	})
+	if err != nil {
+		return fmt.Errorf("S3 PutObject 失败 (bucket=%s key=%s): %w",
+			loader.bucket, skillKey, err)
+	}
+
+	utilities.LogSuccess("S3SkillLoader", "UploadSkill", time.Since(start),
+		fmt.Sprintf("bucket=%s", loader.bucket),
+		fmt.Sprintf("key=%s", skillKey),
+		fmt.Sprintf("size=%d", len(content)),
+	)
+	return nil
+}
+
+// SkillExists 检查指定技能是否已存在于 S3。
+// 通过 HeadObject 请求探测对象是否存在，避免下载完整内容。
+//
+// 返回值：
+//   - bool : 技能存在则为 true
+//   - error : S3 API 调用失败时返回错误（404 视为不存在，不算错误）
+func (loader *S3SkillLoader) SkillExists(ctx context.Context, skillName string) (bool, error) {
+	if loader == nil || loader.bucket == "" {
+		return false, nil
+	}
+
+	client, err := loader.getClient(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	skillKey := loader.buildSkillKey(skillName)
+
+	_, err = client.HeadObject(ctx, &s3.HeadObjectInput{
+		Bucket: aws.String(loader.bucket),
+		Key:    aws.String(skillKey),
+	})
+	if err != nil {
+		// S3 在对象不存在时返回 404 错误，归一化为 "NotFound"。
+		var apiErr smithy.APIError
+		if errors.As(err, &apiErr) && (apiErr.ErrorCode() == "NotFound" || apiErr.ErrorCode() == "NoSuchKey") {
+			return false, nil
+		}
+		return false, fmt.Errorf("S3 HeadObject 失败 (bucket=%s key=%s): %w",
+			loader.bucket, skillKey, err)
+	}
+	return true, nil
+}
+
+// StorageURI 返回技能文件在 S3 中的完整 URI，例如 "s3://bucket/skills/foo.md"。
+// 用于在响应中告知用户新技能的存储位置。
+func (loader *S3SkillLoader) StorageURI(skillName string) string {
+	if loader == nil || loader.bucket == "" {
+		return ""
+	}
+	return fmt.Sprintf("s3://%s/%s", loader.bucket, loader.buildSkillKey(skillName))
 }
 
 func (loader *S3SkillLoader) buildSkillKey(skillIdentifier string) string {

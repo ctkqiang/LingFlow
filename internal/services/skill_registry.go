@@ -75,6 +75,43 @@ func (registry *SkillRegistry) UnregisterSkill(skillIdentifier string) bool {
 	return true
 }
 
+// Reload 清空并替换技能注册中心的内容。
+// 通常在 S3 中新增/修改技能后调用，以同步内存索引。
+// 与逐个 RegisterSkill 相比，Reload 是原子操作，期间不会留下空状态。
+//
+// 参数：
+//   - skills : 新的完整技能列表（通常来自 S3SkillLoader.LoadAllSkills）
+//
+// 返回：任一技能缺少必填字段时返回错误；成功时返回 nil。
+func (registry *SkillRegistry) Reload(skills []models.SkillDefinition) error {
+	start := time.Now()
+	utilities.LogStart("SkillRegistry", "Reload")
+
+	// 先校验全部技能，避免半完成状态。
+	for _, skill := range skills {
+		if skill.SkillIdentifier == "" {
+			return fmt.Errorf("技能标识符为必填项")
+		}
+		if skill.SkillDisplayName == "" {
+			return fmt.Errorf("技能 %q 的显示名称为必填项", skill.SkillIdentifier)
+		}
+	}
+
+	registry.registryMutex.Lock()
+	defer registry.registryMutex.Unlock()
+
+	registry.skills = make(map[string]models.SkillDefinition, len(skills))
+	for _, skill := range skills {
+		registry.skills[skill.SkillIdentifier] = skill
+	}
+	registry.rebuildMetadataIndexLocked()
+
+	utilities.LogSuccess("SkillRegistry", "Reload", time.Since(start),
+		fmt.Sprintf("count=%d", len(skills)),
+	)
+	return nil
+}
+
 // GetSkill 根据标识符检索一个技能。
 func (registry *SkillRegistry) GetSkill(skillIdentifier string) (models.SkillDefinition, bool) {
 	registry.registryMutex.RLock()
