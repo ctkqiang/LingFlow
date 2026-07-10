@@ -1,0 +1,193 @@
+# ============================================================================
+# LingFlow - GitLab CI/CD 流水线配置
+# ============================================================================
+# 模块名称: ling_flow
+# 语言: Go 1.26.1 + Vue 3 (Bun + Vite)
+# 部署目标: AWS Lambda
+# ============================================================================
+
+stages:
+  - lint
+  - test
+  - build
+  - security
+  - deploy
+
+variables:
+  GO_VERSION: "1.26.1"
+  BUN_VERSION: "1.2"
+  GOPATH: "${CI_PROJECT_DIR}/.go"
+  GOFLAGS: "-v"
+  CGO_ENABLED: "0"
+
+# ----------------------------------------------------------------------------
+# 缓存配置：加速后续流水线执行
+# ----------------------------------------------------------------------------
+.go_cache: &go_cache
+  cache:
+    key: "${CI_COMMIT_REF_SLUG}-go"
+    paths:
+      - .go/pkg/mod/
+      - .go/bin/
+    policy: pull-push
+
+.bun_cache: &bun_cache
+  cache:
+    key: "${CI_COMMIT_REF_SLUG}-bun"
+    paths:
+      - demo/node_modules/
+    policy: pull-push
+
+# ============================================================================
+# 代码质量阶段
+# ============================================================================
+
+go:format:
+  stage: lint
+  image: golang:${GO_VERSION}
+  <<: *go_cache
+  script:
+    - echo "--- 检查 Go 代码格式 ---"
+    - test -z "$(gofmt -l .)" || (echo "以下文件未格式化：" && gofmt -l . && exit 1)
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+
+go:vet:
+  stage: lint
+  image: golang:${GO_VERSION}
+  <<: *go_cache
+  script:
+    - echo "--- 运行 Go 静态分析 ---"
+    - go vet ./...
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+
+# ============================================================================
+# 测试阶段
+# ============================================================================
+
+go:test:
+  stage: test
+  image: golang:${GO_VERSION}
+  <<: *go_cache
+  script:
+    - echo "--- 运行 Go 单元测试 ---"
+    - go test ./... -v -race -coverprofile=coverage.out
+    - go tool cover -func=coverage.out
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.out
+    paths:
+      - coverage.out
+    expire_in: 7 days
+  coverage: '/total:\s+\(statements\)\s+(\d+\.\d+)%/'
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+
+# ============================================================================
+# 构建阶段
+# ============================================================================
+
+go:build:
+  stage: build
+  image: golang:${GO_VERSION}
+  <<: *go_cache
+  script:
+    - echo "--- 构建 Go 后端二进制文件 ---"
+    - go build ${GOFLAGS} -ldflags "-s -w" -o build/LingFlow .
+    - ls -lh build/LingFlow
+  artifacts:
+    paths:
+      - build/LingFlow
+    expire_in: 7 days
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+
+go:build:lambda:
+  stage: build
+  image: golang:${GO_VERSION}
+  <<: *go_cache
+  script:
+    - echo "--- 构建 AWS Lambda 部署包 ---"
+    - GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build ${GOFLAGS} -ldflags "-s -w" -o build/bootstrap .
+    - apt-get update -qq && apt-get install -y -qq zip
+    - cd build && zip -j lambda.zip bootstrap
+    - ls -lh lambda.zip
+  artifacts:
+    paths:
+      - build/lambda.zip
+    expire_in: 7 days
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+
+frontend:build:
+  stage: build
+  image: oven/bun:${BUN_VERSION}
+  <<: *bun_cache
+  script:
+    - echo "--- 构建前端静态资源 ---"
+    - cd demo
+    - bun install --frozen-lockfile
+    - bun run build
+  artifacts:
+    paths:
+      - demo/dist/
+    expire_in: 7 days
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+
+# ============================================================================
+# 安全扫描阶段
+# ============================================================================
+
+sast:
+  stage: security
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+
+dependency_scanning:
+  stage: security
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+
+secret_detection:
+  stage: security
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+
+include:
+  - template: Security/SAST.gitlab-ci.yml
+  - template: Security/Dependency-Scanning.gitlab-ci.yml
+  - template: Security/Secret-Detection.gitlab-ci.yml
+
+# ============================================================================
+# 部署阶段（仅 main 分支手动触发）
+# ============================================================================
+
+deploy:lambda:
+  stage: deploy
+  image: amazon/aws-cli:latest
+  dependencies:
+    - go:build:lambda
+  script:
+    - echo "--- 部署到 AWS Lambda ---"
+    - aws lambda update-function-code
+        --function-name LingFlow
+        --zip-file fileb://build/lambda.zip
+        --region ${AWS_REGION}
+    - echo "--- 部署完成 ---"
+  environment:
+    name: production
+    url: https://${AWS_REGION}.console.aws.amazon.com/lambda
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: manual
+      allow_failure: false

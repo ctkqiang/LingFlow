@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lingflow-config
+data:
+  AWS_REGION: "ap-southeast-5"
+  AWS_BEDROCK_REGION: "us-east-1"
+  AWS_BEDROCK_MODEL_ID: "amazon.nova-lite-v1:0"
+  AWS_BEDROCK_MAX_TOKENS: "2048"
+  AWS_BEDROCK_TEMPERATURE: "0.7"
+  AWS_BEDROCK_TOP_P: "0.9"
+  AWS_BEDROCK_TIMEOUT: "60s"
+  SKILLS_S3_BUCKET: "skill-bucket-bedrock"
+  SKILLS_S3_PREFIX: "skills/"
+  S3_REGION: "ap-southeast-5"
+  IS_ALLOW_USER_CREATE_SKILL: "false"
+  ENABLE_BEDROCK_GUARDRAIL: "false"
+  WSS_HEARTBEAT_INTERVAL: "30s"
+  WSS_HEARTBEAT_TIMEOUT: "90s"
+  WSS_HEARTBEAT_WRITE_TIMEOUT: "10s"
+  WSS_MAX_CONNECTIONS_PER_IP: "10"

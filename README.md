@@ -789,41 +789,9 @@ LingFlow 使用基于关键词的混合检索策略：
 
 ### 创建流水线
 
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│                    #create_skill 流水线 (14 步)                      │
-├──────────────────────────────────────────────────────────────────────┤
-│                                                                      │
-│  1. 命令解析 → 提取技能名称和描述                                      │
-│         ↓                                                           │
-│  2. 名称验证 → 仅允许小写字母、数字、下划线 (1-64字符)                  │
-│         ↓                                                           │
-│  3. 速率限制检查 → 每用户每分钟最多 5 次                               │
-│         ↓                                                           │
-│  4. 提示注入检测 → 输入层正则匹配 + 输出层内容审查                     │
-│         ↓                                                           │
-│  5. 技能存在性检查 → S3 HeadObject 判断是否已存在                      │
-│         ↓                                                           │
-│  6. 事务锁获取 → 创建空文件占位，防止并发竞态                          │
-│         ↓                                                           │
-│  7. AI 内容生成 → 调用 Bedrock Converse API 生成 Markdown             │
-│         ↓                                                           │
-│  8. 输出内容验证 → 确保生成内容符合技能模板格式                         │
-│         ↓                                                           │
-│  9. S3 文件上传 → 两阶段提交：先上传内容再删除占位                      │
-│         ↓                                                           │
-│ 10. 技能注册表刷新 → 本地缓存重新加载                                  │
-│         ↓                                                           │
-│ 11. 技能列表推送 → 向所有在线连接广播更新后的技能列表                   │
-│         ↓                                                           │
-│ 12. 事务清理 → 删除空文件占位                                         │
-│         ↓                                                           │
-│ 13. 成功响应 → 向发起用户返回创建结果                                 │
-│         ↓                                                           │
-│ 14. 错误处理 → 任意步骤失败则回滚并清理资源                            │
-│                                                                      │
-└──────────────────────────────────────────────────────────────────────┘
-```
+<img src="docs/images/create_skill_pipeline.png" alt="LingFlow 技能创建流水线" width="100%" />
+
+> 也可通过 [create_skill_pipeline.puml](docs/images/create_skill_pipeline.puml) 文件查看源文件。
 
 ### 使用示例
 
@@ -857,6 +825,137 @@ LingFlow 使用基于关键词的混合检索策略：
 | 事务锁       | 空文件占位防止并发创建同一技能              |
 | 内容验证     | 生成的 Markdown 必须符合技能模板格式        |
 | 生产模式限制 | 仅在 IS_ALLOW_USER_CREATE_SKILL=true 时启用 |
+
+---
+
+## 部署指南
+
+### 本地部署
+
+```bash
+go build -o lingflow main.go
+./lingflow
+```
+
+### Docker 部署
+
+```bash
+docker build -t lingflow .
+docker run -p 4030:4030 --env-file .env lingflow
+```
+
+### Kubernetes 部署
+
+项目提供了完整的 Kubernetes 部署配置文件，位于 `k8s/` 目录：
+
+```
+k8s/
+├── deployment.yaml    # 应用部署配置
+├── service.yaml       # 服务暴露配置
+├── ingress.yaml       # 入口网关配置
+├── configmap.yaml     # 非敏感配置项
+└── secret.yaml        # 敏感配置项（需手动填写）
+```
+
+#### 部署步骤
+
+```bash
+# 1. 创建命名空间（可选）
+kubectl create namespace lingflow
+
+# 2. 创建 ConfigMap
+kubectl apply -f k8s/configmap.yaml
+
+# 3. 创建 Secret（需先填写敏感值）
+kubectl apply -f k8s/secret.yaml
+
+# 4. 创建 Service
+kubectl apply -f k8s/service.yaml
+
+# 5. 创建 Deployment
+kubectl apply -f k8s/deployment.yaml
+
+# 6. 创建 Ingress（可选）
+kubectl apply -f k8s/ingress.yaml
+```
+
+#### 配置说明
+
+**ConfigMap（非敏感配置）**
+
+| 配置项 | 值 |
+| --- | --- |
+| `AWS_REGION` | S3 所在区域 |
+| `AWS_BEDROCK_REGION` | Bedrock 服务区域 |
+| `AWS_BEDROCK_MODEL_ID` | 模型标识符 |
+| `SKILLS_S3_BUCKET` | 技能存储桶名称 |
+| `WSS_HEARTBEAT_INTERVAL` | 心跳间隔 |
+
+**Secret（敏感配置，需 base64 编码）**
+
+```bash
+# 生成 base64 编码值
+echo -n "your-access-key" | base64
+echo -n "your-secret-key" | base64
+echo -n "your-auth-secret" | base64
+echo -n "your-api-key" | base64
+```
+
+#### 健康检查
+
+部署配置包含 liveness 和 readiness 探针：
+
+```yaml
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 4030
+  initialDelaySeconds: 10
+  periodSeconds: 30
+
+readinessProbe:
+  httpGet:
+    path: /ready
+    port: 4030
+  initialDelaySeconds: 5
+  periodSeconds: 10
+```
+
+#### 资源限制
+
+```yaml
+resources:
+  requests:
+    memory: "256Mi"
+    cpu: "250m"
+  limits:
+    memory: "512Mi"
+    cpu: "500m"
+```
+
+#### 水平扩展
+
+通过修改 Deployment 的 `replicas` 字段进行水平扩展：
+
+```bash
+kubectl scale deployment lingflow --replicas=5
+```
+
+#### 滚动更新
+
+配置已启用滚动更新策略：
+
+```yaml
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 1
+    maxUnavailable: 0
+```
+
+### AWS Lambda + API Gateway 部署
+
+参考 `internal/services/aws/lambda.go` 实现 Serverless 部署。
 
 ---
 

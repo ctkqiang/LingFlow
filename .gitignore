@@ -55,3 +55,14 @@ demo/pnpm-lock.yaml
 # Logs
 *.log
 logs/
+
+# Kubernetes
+helm/
+charts/
+*.helm
+*.yaml.tmpl
+kustomization.yaml.bak
+kustomize/
+overlays/
+generated/
+manifests/

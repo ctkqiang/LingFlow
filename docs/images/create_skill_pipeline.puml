@@ -1,0 +1,114 @@
+@startuml
+!theme plain
+
+skinparam backgroundColor #FFFFFF
+skinparam activity {
+  BackgroundColor #FFFFFF
+  BorderColor #333333
+  ArrowColor #333333
+  StartColor #333333
+  EndColor #333333
+}
+skinparam note {
+  BackgroundColor #F5F5F5
+  BorderColor #CCCCCC
+}
+
+start
+
+:1. 命令解析;
+
+note right
+  提取技能名称和描述
+end note
+
+:2. 名称验证;
+
+note right
+  仅允许小写字母、数字、下划线
+  长度 1-64 字符
+end note
+
+:3. 速率限制检查;
+
+note right
+  每用户每分钟最多 5 次
+end note
+
+:4. 提示注入检测;
+
+note right
+  输入层正则匹配
+  输出层内容审查
+end note
+
+:5. 技能存在性检查;
+
+note right
+  S3 HeadObject
+  判断是否已存在
+end note
+
+:6. 事务锁获取;
+
+note right
+  创建空文件占位
+  防止并发竞态
+end note
+
+:7. AI 内容生成;
+
+note right
+  调用 Bedrock Converse API
+  生成 Markdown 内容
+end note
+
+:8. 输出内容验证;
+
+note right
+  确保生成内容符合
+  技能模板格式
+end note
+
+:9. S3 文件上传;
+
+note right
+  两阶段提交：
+  先上传内容再删除占位
+end note
+
+:10. 技能注册表刷新;
+
+note right
+  本地缓存重新加载
+end note
+
+:11. 技能列表推送;
+
+note right
+  向所有在线连接
+  广播更新后的技能列表
+end note
+
+:12. 事务清理;
+
+note right
+  删除空文件占位
+end note
+
+:13. 成功响应;
+
+note right
+  向发起用户返回创建结果
+end note
+
+:14. 错误处理;
+
+note right
+  任意步骤失败则回滚
+  并清理资源
+end note
+
+stop
+
+@enduml
