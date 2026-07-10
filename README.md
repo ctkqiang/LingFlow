@@ -18,34 +18,34 @@
 
 ---
 
-## 📋 目录
+## 目录
 
-- [项目概述](#-项目概述)
-- [核心特性](#-核心特性)
-- [系统架构](#-系统架构)
-- [快速开始](#-快速开始)
-- [环境配置详解](#-环境配置详解)
-- [AWS 基础设施准备](#-aws-基础设施准备)
-- [WebSocket 协议规范](#-websocket-协议规范)
-- [技能系统](#-技能系统)
-- [AI 技能创建（#create_skill）](#-ai-技能创建create_skill)
-- [认证与安全](#-认证与安全)
-- [事件溯源架构](#-事件溯源架构)
-- [运行模式](#-运行模式)
-- [API 参考](#-api-参考)
-- [测试指南](#-测试指南)
-- [部署指南](#-部署指南)
-- [监控与日志](#-监控与日志)
-- [性能与容量规划](#-性能与容量规划)
-- [常见问题解答](#-常见问题解答)
-- [项目结构](#-项目结构)
-- [演示应用（Vue.js）](#-演示应用vuejs)
-- [社区与贡献](#-社区与贡献)
-- [版本历史](#-版本历史)
+- [项目概述](#项目概述)
+- [核心特性](#核心特性)
+- [系统架构](#系统架构)
+- [快速开始](#快速开始)
+- [环境配置详解](#环境配置详解)
+- [AWS 基础设施准备](#aws-基础设施准备)
+- [WebSocket 协议规范](#websocket-协议规范)
+- [技能系统](#技能系统)
+- [AI 技能创建（#create_skill）](#ai-技能创建create_skill)
+- [认证与安全](#认证与安全)
+- [事件溯源架构](#事件溯源架构)
+- [运行模式](#运行模式)
+- [API 参考](#api-参考)
+- [测试指南](#测试指南)
+- [部署指南](#部署指南)
+- [监控与日志](#监控与日志)
+- [性能与容量规划](#性能与容量规划)
+- [常见问题解答](#常见问题解答)
+- [项目结构](#项目结构)
+- [演示应用（Vue.js）](#演示应用vuejs)
+- [社区与贡献](#社区与贡献)
+- [版本历史](#版本历史)
 
 ---
 
-## 🌟 项目概述
+## 项目概述
 
 **LingFlow** 是一个基于 **Go 语言**构建的 **WebSocket 实时 AI 聊天服务框架**，核心理念是通过 **S3 动态技能加载** 赋能 LLM（大语言模型），实现可热更新的领域知识注入。系统采用 **事件溯源（Event Sourcing）** 模式管理会话生命周期，支持流式响应（思考过程 + 最终回复），并提供完整的认证、安全防护和多云部署能力。
 
@@ -58,23 +58,23 @@
 | **事件驱动**        | 所有状态变更以不可变事件记录，支持审计和回放                                     |
 | **安全优先**        | 内置提示注入检测、速率限制、TLS 强制、Origin 白名单等多层防护                    |
 | **多云就绪**        | 支持本地服务器、EC2 和 AWS Lambda + API Gateway 三种部署模式                     |
-| **开发者友好**      | 内置 Mock LLM 模式，无需 AWS 凭证即可快速开发测试                               |
+| **开发者友好**      | 内置 Mock LLM 模式，无需 AWS 凭证即可快速开发测试                                |
 
 ### 技术栈
 
-| 层次 | 技术 | 版本 | 说明 |
-|------|------|------|------|
-| **后端** | Go | 1.26.1 | 高性能服务端语言 |
-| **前端** | Vue.js | 3.x | 响应式 UI 框架 |
-| **运行时** | Bun | 1.x | 前端包管理和运行时 |
-| **LLM** | AWS Bedrock | Converse API | 大语言模型服务 |
-| **存储** | AWS S3 | - | 技能文件存储 |
-| **通信** | WebSocket | RFC 6455 | 实时双向通信 |
-| **架构** | Event Sourcing | - | 事件溯源模式 |
+| 层次       | 技术           | 版本         | 说明               |
+| ---------- | -------------- | ------------ | ------------------ |
+| **后端**   | Go             | 1.26.1       | 高性能服务端语言   |
+| **前端**   | Vue.js         | 3.x          | 响应式 UI 框架     |
+| **运行时** | Bun            | 1.x          | 前端包管理和运行时 |
+| **LLM**    | AWS Bedrock    | Converse API | 大语言模型服务     |
+| **存储**   | AWS S3         | -            | 技能文件存储       |
+| **通信**   | WebSocket      | RFC 6455     | 实时双向通信       |
+| **架构**   | Event Sourcing | -            | 事件溯源模式       |
 
 ---
 
-## ✨ 核心特性
+## 核心特性
 
 ### 1. WebSocket 流式通信
 
@@ -122,7 +122,7 @@
 
 ---
 
-## 🏗️ 系统架构
+## 系统架构
 
 ### 整体架构图
 
@@ -138,7 +138,7 @@
 
 ---
 
-## 🚀 快速开始
+## 快速开始
 
 ### 前置条件
 
@@ -146,7 +146,7 @@
 | -------------------------------------- | -------- | --------------------------- |
 | [Go](https://go.dev/dl/)               | 1.26.1   | Go 编程语言运行时           |
 | [AWS CLI](https://aws.amazon.com/cli/) | 2.x      | AWS 命令行工具（配置凭证）  |
-| [Bun](https://bun.sh/)                | 1.x      | 前端包管理工具（演示用）    |
+| [Bun](https://bun.sh/)                 | 1.x      | 前端包管理工具（演示用）    |
 | AWS 账户                               | —        | 需要 S3 和 Bedrock 访问权限 |
 
 ### 步骤 1：克隆项目
@@ -225,7 +225,7 @@ bun run dev
 
 ---
 
-## ⚙️ 环境配置详解
+## 环境配置详解
 
 ### 核心服务配置
 
@@ -317,7 +317,7 @@ bun run dev
 
 ---
 
-## ☁️ AWS 基础设施准备
+## AWS 基础设施准备
 
 ### 1. 创建 S3 存储桶
 
@@ -342,40 +342,40 @@ aws s3api create-bucket \
 mkdir -p skills
 
 # 创建示例技能文件
-cat > skills/trade_analysis.md << 'EOF'
-# 交易分析
+cat > skills/vulnerability_scanner.md << 'EOF'
+# 漏洞扫描
 
-description: 分析交易模式和市场数据，提供投资洞察
-category: finance
-keywords: 交易, 分析, 市场, 股票, 投资, K线, 技术指标
+description: 检测系统漏洞和安全威胁，提供安全评估报告
+category: security
+keywords: 漏洞, 扫描, 安全, 威胁, 检测, CVE, 渗透测试
 
 ## 角色定义
 
-你是一名专业的交易分析专家，拥有丰富的金融市场经验。
+你是一名专业的网络安全分析师，拥有丰富的漏洞检测和安全评估经验。
 
 ## 核心能力
 
-1. 技术指标分析（MACD、RSI、布林带等）
-2. K线形态识别
-3. 趋势判断与支撑阻力位分析
-4. 风险评估与仓位建议
-5. 市场情绪分析
+1. 常见漏洞检测（SQL注入、XSS、CSRF等）
+2. 系统配置安全评估
+3. 网络服务安全审计
+4. 安全威胁分析与风险评级
+5. 修复建议与防护方案制定
 
 ## 使用说明
 
-当用户询问交易相关问题时，使用该技能提供专业分析。
+当用户询问安全相关问题时，使用该技能提供专业分析和建议。
 
 ## 约束与规则
 
-1. 不提供具体买卖建议，仅提供分析参考
-2. 明确标注数据时效性限制
-3. 风险提示必须包含在响应中
+1. 不提供具体攻击方法，仅提供防御建议
+2. 明确标注检测结果的时效性
+3. 风险等级评估必须包含在响应中
 4. 使用专业术语时附带简要解释
 EOF
 
 # 上传到 S3
-aws s3 cp skills/trade_analysis.md \
-  s3://skill-bucket-bedrock/skills/trade_analysis.md
+aws s3 cp skills/vulnerability_scanner.md \
+  s3://skill-bucket-bedrock/skills/vulnerability_scanner.md
 ```
 
 ### 3. 创建 IAM 用户并配置策略
@@ -508,7 +508,7 @@ aws bedrock list-foundation-models --region us-east-1
 
 ---
 
-## 🔌 WebSocket 协议规范
+## WebSocket 协议规范
 
 ### 连接地址
 
@@ -522,14 +522,14 @@ wss://your-domain.com/chat/{会话ID}?token={认证令牌}
 
 ### 消息类型总览
 
-| 消息类型              | 方向      | 说明                      |
-| --------------------- | --------- | ------------------------- |
-| `user_chat`           | C → S     | 用户聊天消息               |
-| `heartbeat_chat`      | 双向       | 心跳 Ping/Pong            |
-| `system_chat`         | S → C     | 系统通知（错误、状态）      |
-| `system_thinking`     | S → C     | AI 思考过程（流式）         |
-| `system_response`     | S → C     | AI 最终响应               |
-| `system_skills_list`  | S → C     | 可用技能列表（连接后推送）   |
+| 消息类型             | 方向  | 说明                       |
+| -------------------- | ----- | -------------------------- |
+| `user_chat`          | C → S | 用户聊天消息               |
+| `heartbeat_chat`     | 双向  | 心跳 Ping/Pong             |
+| `system_chat`        | S → C | 系统通知（错误、状态）     |
+| `system_thinking`    | S → C | AI 思考过程（流式）        |
+| `system_response`    | S → C | AI 最终响应                |
+| `system_skills_list` | S → C | 可用技能列表（连接后推送） |
 
 <img src="docs/images/ws.png" alt="LingFlow WebSocket 协议" width="100%" />
 
@@ -543,19 +543,19 @@ wss://your-domain.com/chat/{会话ID}?token={认证令牌}
   "data": {
     "id": 1,
     "user_id": "user-123",
-    "message": "我想分析这笔交易",
-    "selected_skill": "/trade_analysis"
+    "message": "检测这个系统的安全漏洞",
+    "selected_skill": "/vulnerability_scanner"
   },
   "timestamp": "2026-07-09T10:30:00Z"
 }
 ```
 
-| 字段                  | 类型   | 说明                                             |
-| --------------------- | ------ | ------------------------------------------------ |
-| `data.id`             | int64  | 消息唯一 ID                                      |
-| `data.user_id`        | string | 用户 ID                                          |
-| `data.message`        | string | 用户消息内容                                     |
-| `data.selected_skill` | string | 用户手动选中的技能（可选，如 `/trade_analysis`） |
+| 字段                  | 类型   | 说明                                                    |
+| --------------------- | ------ | ------------------------------------------------------- |
+| `data.id`             | int64  | 消息唯一 ID                                             |
+| `data.user_id`        | string | 用户 ID                                                 |
+| `data.message`        | string | 用户消息内容                                            |
+| `data.selected_skill` | string | 用户手动选中的技能（可选，如 `/vulnerability_scanner`） |
 
 #### 心跳消息 (`heartbeat_chat`)
 
@@ -583,11 +583,11 @@ wss://your-domain.com/chat/{会话ID}?token={认证令牌}
   "data": {
     "skills": [
       {
-        "skill_identifier": "/trade_analysis",
-        "skill_display_name": "交易分析",
-        "skill_description": "分析交易模式和市场数据",
-        "skill_category": "finance",
-        "search_keywords": ["交易", "分析", "市场", "股票"]
+        "skill_identifier": "/vulnerability_scanner",
+        "skill_display_name": "漏洞扫描",
+        "skill_description": "检测系统漏洞和安全威胁",
+        "skill_category": "security",
+        "search_keywords": ["漏洞", "扫描", "安全", "威胁", "检测"]
       }
     ],
     "total": 1,
@@ -609,17 +609,17 @@ wss://your-domain.com/chat/{会话ID}?token={认证令牌}
     "phase": "skill_selection",
     "skill_matches": [
       {
-        "skill_identifier": "/trade_analysis",
-        "skill_display_name": "交易分析",
+        "skill_identifier": "/vulnerability_scanner",
+        "skill_display_name": "漏洞扫描",
         "match_score": 0.95,
-        "skill_category": "finance"
+        "skill_category": "security"
       }
     ],
     "selected_skill": {
-      "skill_identifier": "/trade_analysis",
-      "skill_display_name": "交易分析",
+      "skill_identifier": "/vulnerability_scanner",
+      "skill_display_name": "漏洞扫描",
       "match_score": 0.95,
-      "skill_category": "finance"
+      "skill_category": "security"
     },
     "thought": "正在匹配用户查询与可用技能..."
   },
@@ -646,12 +646,12 @@ wss://your-domain.com/chat/{会话ID}?token={认证令牌}
 {
   "type": "system_response",
   "data": {
-    "content": "这是你的交易分析结果...",
+    "content": "这是你的漏洞扫描结果...",
     "skill_used": {
-      "skill_identifier": "/trade_analysis",
-      "skill_display_name": "交易分析",
+      "skill_identifier": "/vulnerability_scanner",
+      "skill_display_name": "漏洞扫描",
       "match_score": 0.95,
-      "skill_category": "finance"
+      "skill_category": "security"
     },
     "finish_reason": "end_turn",
     "tokens_used": 150,
@@ -693,7 +693,7 @@ wss://your-domain.com/chat/{会话ID}?token={认证令牌}
 
 ---
 
-## 📚 技能系统
+## 技能系统
 
 ### 技能文件格式
 
@@ -702,9 +702,9 @@ wss://your-domain.com/chat/{会话ID}?token={认证令牌}
 ```
 s3://your-bucket/
   └── skills/
-      ├── trade_analysis.md      → 技能标识: /trade_analysis
-      ├── stock_analyzer.md      → 技能标识: /stock_analyzer
-      └── refund_status.md       → 技能标识: /refund_status
+      ├── vulnerability_scanner.md      → 技能标识: /vulnerability_scanner
+      ├── threat_intel.md               → 技能标识: /threat_intel
+      └── security_audit.md             → 技能标识: /security_audit
 ```
 
 **文件名规则：**
@@ -719,7 +719,7 @@ s3://your-bucket/
 # 技能显示名称
 
 description: 精确的一句话描述，说明该技能的核心能力和适用场景
-category: 分类（general / analysis / trading / coding / finance / security / data）
+category: 分类（general / analysis / security / coding / data / networking / devops）
 keywords: 关键词 1, 关键词 2, 关键词 3, 关键词 4, 关键词 5
 
 ## 角色定义
@@ -751,13 +751,13 @@ keywords: 关键词 1, 关键词 2, 关键词 3, 关键词 4, 关键词 5
 
 1. 规则一
 2. 规则二
-3. 不提供具体投资建议
+3. 不提供具体攻击方法
 
 ## 触发示例
 
-- 基础用例: "分析今天的行情"
-- 进阶用例: "对比 MACD 和 RSI 指标"
-- 边界情况: "没有数据时如何处理"
+- 基础用例: "检测系统安全漏洞"
+- 进阶用例: "评估 Web 应用安全风险"
+- 边界情况: "没有漏洞时如何处理"
 
 ## 错误处理
 
@@ -769,7 +769,7 @@ keywords: 关键词 1, 关键词 2, 关键词 3, 关键词 4, 关键词 5
 LingFlow 使用基于关键词的混合检索策略：
 
 ```
-用户消息 "分析今天的交易行情"
+用户消息 "检测系统安全漏洞"
          │
          ▼
 ┌─────────────────────────────────┐
@@ -786,19 +786,19 @@ LingFlow 使用基于关键词的混合检索策略：
 └─────────────────────────────────┘
          │
          ▼
-   最佳匹配技能 /trade_analysis (score: 0.95)
+   最佳匹配技能 /vulnerability_scanner (score: 0.95)
 ```
 
 ---
 
-## 🛠️ AI 技能创建（#create_skill）
+## AI 技能创建（#create_skill）
 
 ### 工作原理
 
 用户在聊天中发送 `#create_skill` 命令，系统通过 AI 自动生成技能 Markdown 内容并上传到 S3：
 
 ```
-用户: #create_skill stock_analyzer 分析股票走势和市场数据
+用户: #create_skill threat_intel 分析安全威胁情报和攻击趋势
                     │                │
                     ▼                ▼
               技能名称           技能描述
@@ -811,4 +811,88 @@ LingFlow 使用基于关键词的混合检索策略：
 │                    #create_skill 流水线 (14 步)                      │
 ├──────────────────────────────────────────────────────────────────────┤
 │                                                                      │
-│
+│  1. 命令解析 → 提取技能名称和描述                                      │
+│         ↓                                                           │
+│  2. 名称验证 → 仅允许小写字母、数字、下划线 (1-64字符)                  │
+│         ↓                                                           │
+│  3. 速率限制检查 → 每用户每分钟最多 5 次                               │
+│         ↓                                                           │
+│  4. 提示注入检测 → 输入层正则匹配 + 输出层内容审查                     │
+│         ↓                                                           │
+│  5. 技能存在性检查 → S3 HeadObject 判断是否已存在                      │
+│         ↓                                                           │
+│  6. 事务锁获取 → 创建空文件占位，防止并发竞态                          │
+│         ↓                                                           │
+│  7. AI 内容生成 → 调用 Bedrock Converse API 生成 Markdown             │
+│         ↓                                                           │
+│  8. 输出内容验证 → 确保生成内容符合技能模板格式                         │
+│         ↓                                                           │
+│  9. S3 文件上传 → 两阶段提交：先上传内容再删除占位                      │
+│         ↓                                                           │
+│ 10. 技能注册表刷新 → 本地缓存重新加载                                  │
+│         ↓                                                           │
+│ 11. 技能列表推送 → 向所有在线连接广播更新后的技能列表                   │
+│         ↓                                                           │
+│ 12. 事务清理 → 删除空文件占位                                         │
+│         ↓                                                           │
+│ 13. 成功响应 → 向发起用户返回创建结果                                 │
+│         ↓                                                           │
+│ 14. 错误处理 → 任意步骤失败则回滚并清理资源                            │
+│                                                                      │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+### 使用示例
+
+```
+# 创建技能
+#create_skill threat_intel 分析安全威胁情报和攻击趋势
+
+# 创建成功响应
+{
+  "type": "system_chat",
+  "data": {
+    "event": "skill_created",
+    "message": "技能 threat_intel 创建成功",
+    "skill_info": {
+      "skill_identifier": "/threat_intel",
+      "skill_display_name": "威胁情报分析",
+      "skill_description": "分析安全威胁情报和攻击趋势",
+      "skill_category": "security"
+    }
+  }
+}
+```
+
+### 安全防护
+
+| 防护措施     | 说明                                        |
+| ------------ | ------------------------------------------- |
+| 名称白名单   | 仅允许小写字母、数字、下划线                |
+| 速率限制     | 每用户每分钟最多 5 次技能创建               |
+| 提示注入检测 | 输入层 + 输出层双重正则检测                 |
+| 事务锁       | 空文件占位防止并发创建同一技能              |
+| 内容验证     | 生成的 Markdown 必须符合技能模板格式        |
+| 生产模式限制 | 仅在 IS_ALLOW_USER_CREATE_SKILL=true 时启用 |
+
+---
+
+<div align="center">
+
+<h2>支持</h2>
+
+<p>如果您觉得本项目对您有帮助，欢迎请我喝杯咖啡</p>
+<p><sub>您的支持是我持续维护和改进的动力</sub></p>
+
+<br/>
+
+<strong>微信扫码捐赠</strong><br/><br/>
+<img src="https://raw.gitcode.com/ctkqiang_sr/ctkqiang_sr/raw/main/mm_reward_qrcode_1778988737577.png"
+     alt="微信扫码捐赠"
+     width="240"
+     style="border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" />
+
+<br/>
+<br/>
+
+---
