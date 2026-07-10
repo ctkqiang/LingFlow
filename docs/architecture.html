@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LingFlow — 系统架构</title>
+<meta name="description" content="LingFlow 系统架构文档：分层架构设计、核心组件、事件溯源、消息处理流程与项目源码结构" />
+
+<link rel="stylesheet" href="https://unpkg.com/@arco-design/web-react@2.56.0/dist/arco.css" />
+<link rel="stylesheet" href="docs.css" />
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap" rel="stylesheet" />
+</head>
+<body>
+
+<button class="doc-mobile-toggle" id="docSidebarToggle" aria-label="切换导航">≡</button>
+
+<div class="doc-layout">
+
+  <aside class="doc-sidebar" id="docSidebar">
+    <div class="doc-sidebar-logo">
+      <img src="images/logo.svg" alt="LingFlow Logo" />
+      <span>LingFlow</span>
+    </div>
+
+    <div class="doc-nav-section">
+      <div class="doc-nav-title">入门指南</div>
+      <a class="doc-nav-link" href="doc.html">文档首页</a>
+      <a class="doc-nav-link" href="getting-started.html">快速开始</a>
+      <a class="doc-nav-link" href="configuration.html">环境配置</a>
+    </div>
+
+    <div class="doc-nav-section">
+      <div class="doc-nav-title">核心功能</div>
+      <a class="doc-nav-link" href="websocket-protocol.html">WebSocket 协议</a>
+      <a class="doc-nav-link" href="skills.html">技能系统</a>
+      <a class="doc-nav-link active" href="architecture.html">系统架构</a>
+    </div>
+
+    <div class="doc-nav-section">
+      <div class="doc-nav-title">参考文档</div>
+      <a class="doc-nav-link" href="deployment.html">部署指南</a>
+      <a class="doc-nav-link" href="security.html">认证与安全</a>
+      <a class="doc-nav-link" href="index.html">返回首页</a>
+    </div>
+  </aside>
+
+  <main class="doc-main">
+
+    <header class="doc-header">
+      <div class="doc-breadcrumb">
+        <a href="index.html">首页</a> / <a href="architecture.html">核心功能</a> / 系统架构
+      </div>
+      <h1 class="doc-title">系统架构</h1>
+      <p class="doc-desc">
+        LingFlow 采用分层架构与事件溯源模型，从 WebSocket 连接管理到服务编排，每一层独立可扩展。所有状态变更以不可变事件记录，支持审计追踪、会话回放与时间旅行调试。
+      </p>
+    </header>
+
+    <section class="doc-section" id="overview">
+      <h2 class="doc-section-title">整体架构图</h2>
+      <p class="doc-p">
+        LingFlow 采用分层架构设计，从连接管理到服务编排，每一层都独立可扩展。
+      </p>
+      <img class="doc-img" src="images/architecture.png" alt="LingFlow 系统架构图" />
+    </section>
+
+    <section class="doc-section" id="layers">
+      <h2 class="doc-section-title">架构层次说明</h2>
+
+      <h3 class="doc-subsection-title">连接层 (connections/wss.go)</h3>
+      <p class="doc-p">
+        负责 WebSocket 连接的生命周期管理。
+      </p>
+      <ul class="doc-ul">
+        <li>WebSocket 连接管理（连接池、状态追踪）</li>
+        <li>心跳检测引擎（Ping/Pong 双向超时检测）</li>
+        <li>认证与鉴权（HMAC-SHA256 Token 验证）</li>
+        <li>Origin 白名单 / IP 连接数限制</li>
+        <li>帧大小限制（64KB 上限）</li>
+      </ul>
+
+      <h3 class="doc-subsection-title">服务层 (services/)</h3>
+      <p class="doc-p">
+        核心业务逻辑编排层。
+      </p>
+      <ul class="doc-ul">
+        <li>消息路由分发（ChatHandler）</li>
+        <li>流式响应编排（system_thinking + system_response）</li>
+        <li>技能检索执行（SkillExecutor + SkillRegistry）</li>
+        <li>AI 技能创建器（SkillCreator）</li>
+        <li>提示注入防护（双重正则检测）</li>
+      </ul>
+
+      <h3 class="doc-subsection-title">基础设施层</h3>
+      <ul class="doc-ul">
+        <li>AWS Bedrock LLM（Converse API 统一接口）</li>
+        <li>S3 技能存储（动态加载、热更新）</li>
+        <li>事件溯源存储（InMemoryEventStore）</li>
+        <li>聚合与投影（ChatSessionAggregate）</li>
+        <li>命令总线（CommandBus）</li>
+      </ul>
+    </section>
+
+    <section class="doc-section" id="components">
+      <h2 class="doc-section-title">核心组件</h2>
+
+      <h3 class="doc-subsection-title">WebSocketConnectionManager</h3>
+      <p class="doc-p">
+        管理所有 WebSocket 连接的生命周期。
+      </p>
+      <div class="doc-code-block">
+        <div class="doc-code-header">
+          <span class="doc-code-lang">go</span>
+          <button class="doc-code-copy" type="button">复制</button>
+        </div>
+        <div class="doc-code-body"><pre><code>type WebSocketConnectionManager struct {
+    connections         map[string]*connectionState
+    eventStore          events.EventStore
+    heartbeatInterval   time.Duration
+    heartbeatTimeout    time.Duration
+    writeTimeout        time.Duration
+    maxConnectionsPerIP int
+    ipConnectionCount   map[string]int
+}</code></pre></div>
+      </div>
+
+      <p class="doc-p">
+        连接管理器的关键常量定义如下，覆盖心跳间隔、超时阈值与并发连接限制：
+      </p>
+      <div class="doc-code-block">
+        <div class="doc-code-header">
+          <span class="doc-code-lang">go</span>
+          <button class="doc-code-copy" type="button">复制</button>
+        </div>
+        <div class="doc-code-body"><pre><code>const (
+    defaultHeartbeatInterval     = 30 * time.Second
+    defaultHeartbeatTimeout      = 90 * time.Second
+    defaultHeartbeatWriteTimeout = 10 * time.Second
+    defaultMaxConnectionsPerIP   = 10
+    defaultMaxFrameBytes         = 64 * 1024 // 64KB
+)</code></pre></div>
+      </div>
+
+      <h3 class="doc-subsection-title">ChatHandler</h3>
+      <p class="doc-p">
+        通过技能增强的 LLM 管道处理传入的 WebSocket 消息。
+      </p>
+      <div class="doc-code-block">
+        <div class="doc-code-header">
+          <span class="doc-code-lang">go</span>
+          <button class="doc-code-copy" type="button">复制</button>
+        </div>
+        <div class="doc-code-body"><pre><code>type ChatHandler struct {
+    executor      *SkillExecutor
+    registry      *SkillRegistry
+    s3Loader      *S3SkillLoader
+    messageSender MessageSender
+}</code></pre></div>
+      </div>
+
+      <h3 class="doc-subsection-title">LLMService 接口</h3>
+      <p class="doc-p">
+        定义与 LLM 后端交互的统一接口，支持 Bedrock 和 Mock 两种实现。
+      </p>
+      <div class="doc-code-block">
+        <div class="doc-code-header">
+          <span class="doc-code-lang">go</span>
+          <button class="doc-code-copy" type="button">复制</button>
+        </div>
+        <div class="doc-code-body"><pre><code>type LLMService interface {
+    Generate(ctx context.Context, request LLMRequest) (LLMResponse, error)
+    HealthCheck(ctx context.Context) error
+}</code></pre></div>
+      </div>
+
+      <h3 class="doc-subsection-title">BedrockConfig</h3>
+      <div class="doc-code-block">
+        <div class="doc-code-header">
+          <span class="doc-code-lang">go</span>
+          <button class="doc-code-copy" type="button">复制</button>
+        </div>
+        <div class="doc-code-body"><pre><code>type BedrockConfig struct {
+    Region      string
+    ModelID     string
+    MaxTokens   int
+    Temperature float32
+    TopP        float32
+    Timeout     time.Duration
+}</code></pre></div>
+      </div>
+    </section>
+
+    <section class="doc-section" id="event-sourcing">
+      <h2 class="doc-section-title">事件溯源架构</h2>
+      <img class="doc-img" src="images/event_sourcing.png" alt="LingFlow 事件溯源架构" />
+      <p class="doc-p">
+        所有状态变更以不可变事件记录，支持审计追踪、会话回放、时间旅行调试。
+      </p>
+
+      <h3 class="doc-subsection-title">事件类型</h3>
+      <div class="doc-code-block">
+        <div class="doc-code-header">
+          <span class="doc-code-lang">go</span>
+          <button class="doc-code-copy" type="button">复制</button>
+        </div>
+        <div class="doc-code-body"><pre><code>const (
+    EventTypeChatSessionConnected        EventType = "chat_session_connected"
+    EventTypeChatSessionDisconnected     EventType = "chat_session_disconnected"
+    EventTypeChatMessageReceived         EventType = "chat_message_received"
+    EventTypeChatMessageProcessed        EventType = "chat_message_processed"
+    EventTypeChatMessageProcessingFailed EventType = "chat_message_processing_failed"
+    EventTypeChatMessageBroadcasted      EventType = "chat_message_broadcasted"
+    EventTypeHeartbeatPingReceived       EventType = "heartbeat_ping_received"
+    EventTypeHeartbeatPongSent           EventType = "heartbeat_pong_sent"
+    EventTypeHeartbeatTimeout            EventType = "heartbeat_timeout"
+    EventTypeSkillExecutionStarted       EventType = "skill_execution_started"
+    EventTypeSkillExecutionCompleted     EventType = "skill_execution_completed"
+    EventTypeLLMGenerationStarted        EventType = "llm_generation_started"
+    EventTypeLLMGenerationCompleted      EventType = "llm_generation_completed"
+)</code></pre></div>
+      </div>
+
+      <h3 class="doc-subsection-title">DomainEvent 结构</h3>
+      <div class="doc-code-block">
+        <div class="doc-code-header">
+          <span class="doc-code-lang">go</span>
+          <button class="doc-code-copy" type="button">复制</button>
+        </div>
+        <div class="doc-code-body"><pre><code>type DomainEvent struct {
+    EventID     string            `json:"event_id"`
+    StreamID    string            `json:"stream_id"`
+    AggregateID string            `json:"aggregate_id"`
+    EventType   EventType         `json:"event_type"`
+    Version     int64             `json:"version"`
+    OccurredAt  time.Time         `json:"occurred_at"`
+    Data        json.RawMessage   `json:"data"`
+    Metadata    map[string]string `json:"metadata,omitempty"`
+}</code></pre></div>
+      </div>
+
+      <h3 class="doc-subsection-title">事件溯源核心概念</h3>
+      <table class="doc-table">
+        <thead>
+          <tr><th>概念</th><th>说明</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>EventStore</td><td>事件存储接口，当前使用内存实现，可替换为数据库</td></tr>
+          <tr><td>Aggregate Root</td><td>聚合根，封装业务不变量（ChatSessionAggregate）</td></tr>
+          <tr><td>Command</td><td>命令对象，触发状态变更</td></tr>
+          <tr><td>EventHandler</td><td>事件处理器，响应已发生的事件</td></tr>
+          <tr><td>Projection</td><td>投影，将事件流转换为查询视图</td></tr>
+          <tr><td>CommandBus</td><td>命令总线，路由命令到对应处理器</td></tr>
+        </tbody>
+      </table>
+
+      <h3 class="doc-subsection-title">事件溯源数据流</h3>
+      <ul class="doc-ul">
+        <li>客户端发送消息 - 生成 Command</li>
+        <li>CommandBus 路由到对应 Handler</li>
+        <li>Handler 加载 Aggregate 当前状态</li>
+        <li>Aggregate 验证业务规则并产生 Event</li>
+        <li>EventStore 持久化 Event</li>
+        <li>EventBus 广播 Event 给所有 Projection</li>
+        <li>Projection 更新查询视图</li>
+        <li>ChatHandler 通过流式 WebSocket 推送响应</li>
+      </ul>
+    </section>
+
+    <section class="doc-section" id="message-flow">
+      <h2 class="doc-section-title">消息处理流程</h2>
+      <img class="doc-img" src="images/message_flow.png" alt="LingFlow 消息处理流程" />
+    </section>
+
+    <section class="doc-section" id="auth-flow">
+      <h2 class="doc-section-title">认证流程</h2>
+      <img class="doc-img" src="images/auth_flow.png" alt="LingFlow 认证流程" />
+    </section>
+
+    <section class="doc-section" id="source-structure">
+      <h2 class="doc-section-title">项目源码结构</h2>
+      <div class="doc-code-block">
+        <div class="doc-code-header">
+          <span class="doc-code-lang">text</span>
+          <button class="doc-code-copy" type="button">复制</button>
+        </div>
+        <div class="doc-code-body"><pre><code>internal/
+├── connections/
+│   └── wss.go                    # WebSocket 连接管理器
+├── events/
+│   ├── event.go                  # 领域事件定义
+│   ├── store.go                  # 事件存储接口
+│   ├── aggregate.go              # 聚合根基类
+│   ├── bus.go                    # 事件总线
+│   ├── command.go                # 命令定义
+│   ├── handler.go                # 命令处理器
+│   ├── chat_events.go            # 聊天领域事件
+│   └── chat_projection.go        # 聊天投影
+├── models/
+│   ├── message.go                # WebSocket 消息模型
+│   ├── responses.go              # 响应模型
+│   └── skills.go                 # 技能模型
+├── services/
+│   ├── server.go                 # 服务器启动入口
+│   ├── chat_handler.go           # 聊天消息处理器
+│   ├── llm.go                    # LLM 服务（Bedrock + Mock）
+│   ├── s3_skill_loader.go        # S3 技能加载器
+│   ├── skill_registry.go         # 技能注册中心
+│   ├── skill_executor.go         # 技能执行器
+│   ├── skill_creator.go          # AI 技能创建器
+│   ├── auth_handler.go           # 认证处理器
+│   ├── notifier.go               # 通知器
+│   └── aws/lambda.go             # AWS Lambda 适配器
+└── utilities/
+    ├── aws_util.go               # AWS 工具函数
+    ├── config_loader.go          # 配置加载器
+    └── logger.go                 # 日志系统</code></pre></div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+  // 移动端侧边栏切换
+  (function () {
+    var toggle = document.getElementById('docSidebarToggle');
+    var sidebar = document.getElementById('docSidebar');
+    if (!toggle || !sidebar) return;
+
+    // 点击按钮切换 .doc-sidebar 的 .open 类
+    toggle.addEventListener('click', function () {
+      sidebar.classList.toggle('open');
+    });
+
+    // 点击导航链接后在移动端自动收起
+    sidebar.querySelectorAll('.doc-nav-link').forEach(function (link) {
+      link.addEventListener('click', function () {
+        sidebar.classList.remove('open');
+      });
+    });
+
+    // resize 时重置侧边栏状态
+    var resetSidebar = function () {
+      if (window.innerWidth > 1024) {
+        sidebar.classList.remove('open');
+      }
+    };
+    window.addEventListener('resize', resetSidebar);
+  })();
+
+  // 代码块复制
+  (function () {
+    document.querySelectorAll('.doc-code-copy').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var block = btn.closest('.doc-code-block');
+        if (!block) return;
+        var codeEl = block.querySelector('code');
+        if (!codeEl) return;
+        var text = codeEl.innerText;
+        var done = function () {
+          var orig = btn.textContent;
+          btn.textContent = '已复制';
+          setTimeout(function () { btn.textContent = orig; }, 1500);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done).catch(function () {
+            fallbackCopy(text); done();
+          });
+        } else {
+          fallbackCopy(text); done();
+        }
+      });
+    });
+
+    function fallbackCopy(text) {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); } catch (e) {}
+      document.body.removeChild(ta);
+    }
+  })();
+</script>
+
+</body>
+</html>

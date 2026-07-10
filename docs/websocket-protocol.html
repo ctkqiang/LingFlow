@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LingFlow — WebSocket 协议</title>
+<meta name="description" content="LingFlow WebSocket 协议规范：连接地址、消息类型、客户端与服务端双向通信格式、WSMessage 结构定义与心跳机制" />
+
+<link rel="stylesheet" href="https://unpkg.com/@arco-design/web-react@2.56.0/dist/arco.css" />
+<link rel="stylesheet" href="docs.css" />
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap" rel="stylesheet" />
+</head>
+<body>
+
+<button class="doc-mobile-toggle" id="docSidebarToggle" aria-label="切换导航">&#9776;</button>
+
+<div class="doc-layout">
+
+  <aside class="doc-sidebar" id="docSidebar">
+    <div class="doc-sidebar-logo">
+      <img src="images/logo.svg" alt="LingFlow Logo" />
+      <span>LingFlow</span>
+    </div>
+
+    <div class="doc-nav-section">
+      <div class="doc-nav-title">入门指南</div>
+      <a class="doc-nav-link" href="doc.html">文档首页</a>
+      <a class="doc-nav-link" href="getting-started.html">快速开始</a>
+      <a class="doc-nav-link" href="configuration.html">环境配置</a>
+    </div>
+
+    <div class="doc-nav-section">
+      <div class="doc-nav-title">核心功能</div>
+      <a class="doc-nav-link active" href="websocket-protocol.html">WebSocket 协议</a>
+      <a class="doc-nav-link" href="skills.html">技能系统</a>
+      <a class="doc-nav-link" href="architecture.html">系统架构</a>
+    </div>
+
+    <div class="doc-nav-section">
+      <div class="doc-nav-title">参考文档</div>
+      <a class="doc-nav-link" href="deployment.html">部署指南</a>
+      <a class="doc-nav-link" href="security.html">认证与安全</a>
+      <a class="doc-nav-link" href="index.html">返回首页</a>
+    </div>
+  </aside>
+
+  <main class="doc-main">
+
+    <header class="doc-header">
+      <div class="doc-breadcrumb">
+        <a href="index.html">首页</a> / <a href="websocket-protocol.html">核心功能</a> / WebSocket 协议
+      </div>
+      <h1 class="doc-title">WebSocket 协议</h1>
+      <p class="doc-desc">
+        LingFlow 通过 WebSocket 实现客户端与服务端的全双工实时通信。连接建立后，服务端自动推送可用技能列表，客户端发送用户消息后通过流式消息接收 AI 思考过程与最终响应。所有消息均以 JSON 编码，统一封装在 WSMessage 结构中。
+      </p>
+    </header>
+
+    <section class="doc-section" id="connection">
+      <h2 class="doc-section-title">连接地址</h2>
+      <p class="doc-p">
+        WebSocket 端点路径为 <code>/chat/{会话ID}</code>，认证令牌通过 <code>token</code> 查询参数传递。开发模式使用 <code>ws://</code> 明文协议，生产模式必须使用 <code>wss://</code> 加密协议。
+      </p>
+      <div class="doc-code-block">
+        <div class="doc-code-header">
+          <span class="doc-code-lang">bash</span>
+          <button class="doc-code-copy" type="button">复制</button>
+        </div>
+        <div class="doc-code-body"><pre><code># 开发模式
+ws://localhost:4030/chat/{会话ID}?token={认证令牌}
+
+# 生产模式
+wss://your-domain.com/chat/{会话ID}?token={认证令牌}</code></pre></div>
+      </div>
+      <div class="doc-note">
+        <strong>会话 ID：</strong>每次对话使用唯一会话 ID 标识，服务端依据该 ID 维护消息上下文与连接状态。认证令牌失效时服务端会主动关闭连接。
+      </div>
+    </section>
+
+    <section class="doc-section" id="message-types">
+      <h2 class="doc-section-title">消息类型总览</h2>
+      <p class="doc-p">
+        LingFlow 定义了 6 种消息类型，覆盖用户输入、AI 响应、系统通知与心跳保活。其中 <code>heartbeat_chat</code> 为双向消息，其余消息方向固定。
+      </p>
+      <table class="doc-table">
+        <thead>
+          <tr><th>消息类型</th><th>方向</th><th>说明</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>user_chat</td><td>C -&gt; S</td><td>用户聊天消息</td></tr>
+          <tr><td>heartbeat_chat</td><td>双向</td><td>心跳 Ping/Pong</td></tr>
+          <tr><td>system_chat</td><td>S -&gt; C</td><td>系统通知（错误、状态）</td></tr>
+          <tr><td>system_thinking</td><td>S -&gt; C</td><td>AI 思考过程（流式）</td></tr>
+          <tr><td>system_response</td><td>S -&gt; C</td><td>AI 最终响应</td></tr>
+          <tr><td>system_skills_list</td><td>S -&gt; C</td><td>可用技能列表（连接后推送）</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="doc-section" id="protocol-diagram">
+      <h2 class="doc-section-title">WebSocket 协议图</h2>
+      <p class="doc-p">
+        下图展示客户端与服务端之间的完整交互流程，包括连接建立、技能列表推送、用户消息、思考过程流式输出与最终响应。
+      </p>
+      <img class="doc-img" src="images/ws.png" alt="LingFlow WebSocket 协议" />
+    </section>
+
+    <section class="doc-section" id="message-flow">
+      <h2 class="doc-section-title">消息处理流程</h2>
+      <p class="doc-p">
+        用户消息进入服务端后，依次经过技能匹配、LLM 调用与响应组装三个阶段，每个阶段均通过流式消息回传状态，确保前端可实时渲染思考过程。
+      </p>
+      <img class="doc-img" src="images/message_flow.png" alt="LingFlow 消息处理流程" />
+    </section>
+
+    <section class="doc-section" id="client-to-server">
+      <h2 class="doc-section-title">客户端 -&gt; 服务端消息</h2>
+
+      <h3 class="doc-subsection-title" id="user-chat">用户聊天消息 (user_chat)</h3>
+      <p class="doc-p">
+        用户在聊天界面输入文本后，客户端封装为 <code>user_chat</code> 消息发送。可选字段 <code>selected_skill</code> 允许用户手动指定技能标识符，跳过自动匹配流程。
+      </p>
+      <div class="doc-code-block">
+        <div class="doc-code-header">
+          <span class="doc-code-lang">json</span>
+          <button class="doc-code-copy" type="button">复制</button>
+        </div>
+        <div class="doc-code-body"><pre><code>{
+  "type": "user_chat",
+  "data": {
+    "id": 1,
+    "user_id": "user-123",
+    "message": "检测这个系统的安全漏洞",
+    "selected_skill": "/vulnerability_scanner"
+  },
+  "timestamp": "2026-07-09T10:30:00Z"
+}</code></pre></div>
+      </div>
+      <table class="doc-table">
+        <thead>
+          <tr><th>字段</th><th>类型</th><th>说明</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>data.id</td><td>int64</td><td>消息唯一 ID</td></tr>
+          <tr><td>data.user_id</td><td>string</td><td>用户 ID</td></tr>
+          <tr><td>data.message</td><td>string</td><td>用户消息内容</td></tr>
+          <tr><td>data.selected_skill</td><td>string</td><td>用户手动选中的技能（可选，如 /vulnerability_scanner）</td></tr>
+        </tbody>
+      </table>
+
+      <h3 class="doc-subsection-title" id="heartbeat-client">心跳消息 (heartbeat_chat)</h3>
+      <p class="doc-p">
+        客户端定期发送 <code>ping</code> 心跳以保持连接活跃，并携带随机 <code>nonce</code> 供服务端原样回传，用于计算往返延迟。
+      </p>
+      <div class="doc-code-block">
+        <div class="doc-code-header">
+          <span class="doc-code-lang">json</span>
+          <button class="doc-code-copy" type="button">复制</button>
+        </div>
+        <div class="doc-code-body"><pre><code>{
+  "type": "heartbeat_chat",
+  "data": {
+    "action": "ping",
+    "nonce": "abc123",
+    "timestamp": "2026-07-09T10:30:00Z"
+  },
+  "timestamp": "2026-07-09T10:30:00Z"
+}</code></pre></div>
+      </div>
+    </section>
+
+    <section class="doc-section" id="server-to-client">
+      <h2 class="doc-section-title">服务端 -&gt; 客户端消息</h2>
+
+      <h3 class="doc-subsection-title" id="skills-list">技能列表推送 (system_skills_list)</h3>
+      <p class="doc-p">
+        WebSocket 连接建立后，服务端自动推送一次完整的可用技能列表。当技能通过 <code>#create_skill</code> 新增或更新时，服务端会向所有在线连接重新广播该消息。
+      </p>
+      <div class="doc-code-block">
+        <div class="doc-code-header">
+          <span class="doc-code-lang">json</span>
+          <button class="doc-code-copy" type="button">复制</button>
+        </div>
+        <div class="doc-code-body"><pre><code>{
+  "type": "system_skills_list",
+  "data": {
+    "skills": [
+      {
+        "skill_identifier": "/vulnerability_scanner",
+        "skill_display_name": "漏洞扫描",
+        "skill_description": "检测系统漏洞和安全威胁",
+        "skill_category": "security",
+        "search_keywords": ["漏洞", "扫描", "安全", "威胁", "检测"]
+      }
+    ],
+    "total": 1,
+    "source": "s3",
+    "updated_at": "2026-07-09T10:30:00Z"
+  },
+  "timestamp": "2026-07-09T10:30:00Z"
+}</code></pre></div>
+      </div>
+
+      <h3 class="doc-subsection-title" id="system-thinking">系统思考 (system_thinking)</h3>
+      <p class="doc-p">
+        <code>system_thinking</code> 消息按 <code>phase</code> 字段区分阶段。<strong>skill_selection</strong> 阶段携带技能匹配候选与最终选中技能；<strong>llm_generation</strong> 阶段表示已进入大模型调用环节。前端可据此渲染实时思考面板。
+      </p>
+
+      <p class="doc-p"><strong>技能匹配阶段：</strong></p>
+      <div class="doc-code-block">
+        <div class="doc-code-header">
+          <span class="doc-code-lang">json</span>
+          <button class="doc-code-copy" type="button">复制</button>
+        </div>
+        <div class="doc-code-body"><pre><code>{
+  "type": "system_thinking",
+  "data": {
+    "phase": "skill_selection",
+    "skill_matches": [
+      {
+        "skill_identifier": "/vulnerability_scanner",
+        "skill_display_name": "漏洞扫描",
+        "match_score": 0.95,
+        "skill_category": "security"
+      }
+    ],
+    "selected_skill": {
+      "skill_identifier": "/vulnerability_scanner",
+      "skill_display_name": "漏洞扫描",
+      "match_score": 0.95,
+      "skill_category": "security"
+    },
+    "thought": "正在匹配用户查询与可用技能..."
+  },
+  "timestamp": "2026-07-09T10:30:01Z"
+}</code></pre></div>
+      </div>
+
+      <p class="doc-p"><strong>LLM 生成阶段：</strong></p>
+      <div class="doc-code-block">
+        <div class="doc-code-header">
+          <span class="doc-code-lang">json</span>
+          <button class="doc-code-copy" type="button">复制</button>
+        </div>
+        <div class="doc-code-body"><pre><code>{
+  "type": "system_thinking",
+  "data": {
+    "phase": "llm_generation",
+    "thought": "正在调用 Bedrock 生成响应..."
+  },
+  "timestamp": "2026-07-09T10:30:02Z"
+}</code></pre></div>
+      </div>
+
+      <h3 class="doc-subsection-title" id="system-response">系统响应 (system_response)</h3>
+      <p class="doc-p">
+        AI 完成生成后，服务端发送 <code>system_response</code> 消息携带最终内容、所用技能、结束原因与统计指标。该消息标志一次对话回合结束。
+      </p>
+      <div class="doc-code-block">
+        <div class="doc-code-header">
+          <span class="doc-code-lang">json</span>
+          <button class="doc-code-copy" type="button">复制</button>
+        </div>
+        <div class="doc-code-body"><pre><code>{
+  "type": "system_response",
+  "data": {
+    "content": "这是你的漏洞扫描结果...",
+    "skill_used": {
+      "skill_identifier": "/vulnerability_scanner",
+      "skill_display_name": "漏洞扫描",
+      "match_score": 0.95,
+      "skill_category": "security"
+    },
+    "finish_reason": "end_turn",
+    "tokens_used": 150,
+    "latency_ms": 2500
+  },
+  "timestamp": "2026-07-09T10:30:03Z"
+}</code></pre></div>
+      </div>
+
+      <h3 class="doc-subsection-title" id="heartbeat-server">心跳响应 (heartbeat_chat)</h3>
+      <p class="doc-p">
+        服务端收到 <code>ping</code> 后立即回传 <code>pong</code>，原样返回 <code>nonce</code> 并附加 <code>latency</code> 字段（服务端处理耗时，单位毫秒）。
+      </p>
+      <div class="doc-code-block">
+        <div class="doc-code-header">
+          <span class="doc-code-lang">json</span>
+          <button class="doc-code-copy" type="button">复制</button>
+        </div>
+        <div class="doc-code-body"><pre><code>{
+  "type": "heartbeat_chat",
+  "data": {
+    "action": "pong",
+    "nonce": "abc123",
+    "timestamp": "2026-07-09T10:30:00Z",
+    "latency": 50
+  },
+  "timestamp": "2026-07-09T10:30:00Z"
+}</code></pre></div>
+      </div>
+
+      <h3 class="doc-subsection-title" id="system-chat">系统通知 (system_chat)</h3>
+      <p class="doc-p">
+        <code>system_chat</code> 用于推送错误或状态通知，例如功能未启用、配额超限等。前端依据 <code>event</code> 字段决定提示样式。
+      </p>
+      <div class="doc-code-block">
+        <div class="doc-code-header">
+          <span class="doc-code-lang">json</span>
+          <button class="doc-code-copy" type="button">复制</button>
+        </div>
+        <div class="doc-code-body"><pre><code>{
+  "type": "system_chat",
+  "data": {
+    "event": "skill_creation_disabled",
+    "message": "#create_skill 功能未启用..."
+  },
+  "timestamp": "2026-07-09T10:30:00Z"
+}</code></pre></div>
+      </div>
+    </section>
+
+    <section class="doc-section" id="wsmessage-struct">
+      <h2 class="doc-section-title">WSMessage 结构定义</h2>
+      <p class="doc-p">
+        所有 WebSocket 消息统一封装为 <code>WSMessage</code> 结构。<code>Data</code> 字段使用 <code>json.RawMessage</code> 延迟解析，便于服务端按 <code>Type</code> 分发后再反序列化为具体载荷。<code>SkillsId</code> 用于在技能创建流水线中追踪事务上下文。
+      </p>
+      <div class="doc-code-block">
+        <div class="doc-code-header">
+          <span class="doc-code-lang">go</span>
+          <button class="doc-code-copy" type="button">复制</button>
+        </div>
+        <div class="doc-code-body"><pre><code>type WSMessage struct {
+    Type      MessageType     `json:"type"`
+    Data      json.RawMessage `json:"data"`
+    SkillsId  string          `json:"skills_id"`
+    Timestamp time.Time       `json:"timestamp"`
+}</code></pre></div>
+      </div>
+
+      <p class="doc-p">
+        消息类型通过 <code>MessageType</code> 别名定义为字符串常量，便于在 switch 分发与 JSON 序列化中统一引用：
+      </p>
+      <div class="doc-code-block">
+        <div class="doc-code-header">
+          <span class="doc-code-lang">go</span>
+          <button class="doc-code-copy" type="button">复制</button>
+        </div>
+        <div class="doc-code-body"><pre><code>const (
+    UserChat         MessageType = "user_chat"
+    SystemChat       MessageType = "system_chat"
+    SystemThinking   MessageType = "system_thinking"
+    SystemResponse   MessageType = "system_response"
+    SystemSkillsList MessageType = "system_skills_list"
+    HeartbeatChat    MessageType = "heartbeat_chat"
+)</code></pre></div>
+      </div>
+
+      <div class="doc-note">
+        <strong>设计要点：</strong><code>Data</code> 采用 <code>json.RawMessage</code> 而非 <code>interface{}</code>，避免预先反序列化带来的性能开销，同时保留原始字节以便日志排查与二次解析。
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+  // 移动端侧边栏切换
+  (function () {
+    var toggle = document.getElementById('docSidebarToggle');
+    var sidebar = document.getElementById('docSidebar');
+    if (!toggle || !sidebar) return;
+
+    toggle.addEventListener('click', function () {
+      sidebar.classList.toggle('open');
+    });
+
+    document.querySelectorAll('.doc-nav-link').forEach(function (link) {
+      link.addEventListener('click', function () {
+        if (window.innerWidth <= 1024) {
+          sidebar.classList.remove('open');
+        }
+      });
+    });
+
+    window.addEventListener('resize', function () {
+      if (window.innerWidth > 1024) {
+        sidebar.classList.remove('open');
+      }
+    });
+  })();
+
+  // 代码块复制
+  (function () {
+    function fallbackCopy(text) {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); } catch (e) {}
+      document.body.removeChild(ta);
+    }
+
+    document.querySelectorAll('.doc-code-copy').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var block = btn.closest('.doc-code-block');
+        if (!block) return;
+        var codeEl = block.querySelector('code');
+        if (!codeEl) return;
+        var text = codeEl.innerText;
+        var done = function () {
+          var orig = btn.textContent;
+          btn.textContent = '已复制';
+          setTimeout(function () { btn.textContent = orig; }, 1500);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done).catch(function () {
+            fallbackCopy(text); done();
+          });
+        } else {
+          fallbackCopy(text); done();
+        }
+      });
+    });
+  })();
+</script>
+
+</body>
+</html>
