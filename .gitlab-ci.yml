@@ -10,7 +10,6 @@ stages:
   - lint
   - build
   - security
-  - deploy
 
 variables:
   GO_VERSION: "1.26.1"
@@ -116,26 +115,4 @@ secret_detection:
 include:
   - template: Security/Secret-Detection.gitlab-ci.yml
 
-# ============================================================================
-# 部署阶段（仅 main 分支手动触发）
-# ============================================================================
 
-deploy:lambda:
-  stage: deploy
-  image: amazon/aws-cli:latest
-  dependencies:
-    - go:build:lambda
-  script:
-    - echo "--- 部署到 AWS Lambda ---"
-    - aws lambda update-function-code
-        --function-name LingFlow
-        --zip-file fileb://build/lambda.zip
-        --region ${AWS_REGION}
-    - echo "--- 部署完成 ---"
-  environment:
-    name: production
-    url: https://${AWS_REGION}.console.aws.amazon.com/lambda
-  rules:
-    - if: $CI_COMMIT_BRANCH == "main"
-      when: manual
-      allow_failure: false
