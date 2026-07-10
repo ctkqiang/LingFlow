@@ -238,7 +238,7 @@ jobs:
     if: github.ref == 'refs/heads/main'
     environment:
       name: production
-      url: https://${{ secrets.AWS_REGION }}.console.aws.amazon.com/lambda
+      url: https://console.aws.amazon.com/lambda
     steps:
       - name: 下载 Lambda 部署包
         uses: actions/download-artifact@v4
