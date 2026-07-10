@@ -1,13 +1,12 @@
-# 对于大多数项目，此工作流文件无需修改；你只需将其提交到你的仓库即可。
-#
-# 如果需要，你可以修改此文件以覆盖所分析的语言集合，
-# 或者提供自定义查询或构建逻辑。
-#
-# ******** 注意 ********
-# 我们已尝试自动检测你仓库中使用的编程语言。请检查下方定义的
-# `language` 矩阵，确认你拥有正确的 CodeQL 支持语言集合。
-#
-name: 'CodeQL Advanced'
+# ============================================================================
+# LingFlow - GitHub Actions CI/CD 流水线配置
+# ============================================================================
+# 模块名称: ling_flow
+# 语言: Go 1.26.1 + Vue 3 (Bun + Vite)
+# 部署目标: AWS Lambda
+# ============================================================================
+
+name: 'LingFlow CI/CD'
 
 on:
   push:
@@ -17,68 +16,203 @@ on:
   schedule:
     - cron: '16 14 * * 2'
 
+env:
+  GO_VERSION: '1.26.1'
+  BUN_VERSION: '1.2'
+
+permissions:
+  security-events: write
+  packages: read
+  actions: read
+  contents: read
+
+# ============================================================================
+# 代码质量阶段
+# ============================================================================
 jobs:
-  analyze:
-    name: 分析 (${{ matrix.language }})
-    # 运行器规格会影响 CodeQL 分析时间。了解更多请参阅：
-    #   - https://gh.io/recommended-hardware-resources-for-running-codeql
-    #   - https://gh.io/supported-runners-and-hardware-resources
-    #   - https://gh.io/using-larger-runners (仅限 GitHub.com)
-    # 建议使用更大规格的运行器或更高配置的机器以缩短分析时间。
-    runs-on: ${{ (matrix.language == 'swift' && 'macos-latest') || 'ubuntu-latest' }}
-    permissions:
-      # 所有工作流均需要此权限
-      security-events: write
+  go-format:
+    name: Go 代码格式检查
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出仓库代码
+        uses: actions/checkout@v4
 
-      # 拉取内部或私有 CodeQL 包时需要此权限
-      packages: read
+      - name: 配置 Go 环境
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
 
-      # 仅在私有仓库的工作流中需要此权限
-      actions: read
-      contents: read
+      - name: 检查 Go 代码格式
+        run: |
+          UNFORMATTED=$(gofmt -l .)
+          if [ -n "$UNFORMATTED" ]; then
+            echo "以下文件未格式化："
+            echo "$UNFORMATTED"
+            exit 1
+          fi
 
+  go-vet:
+    name: Go 静态分析
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出仓库代码
+        uses: actions/checkout@v4
+
+      - name: 配置 Go 环境
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: 运行 Go 静态分析
+        run: go vet ./...
+
+  # ============================================================================
+  # 测试阶段
+  # ============================================================================
+  go-test:
+    name: Go 单元测试
+    runs-on: ubuntu-latest
+    needs: [go-format, go-vet]
+    steps:
+      - name: 检出仓库代码
+        uses: actions/checkout@v4
+
+      - name: 配置 Go 环境
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: 运行单元测试
+        run: go test ./... -v -race -coverprofile=coverage.out
+
+      - name: 输出覆盖率报告
+        run: go tool cover -func=coverage.out
+
+      - name: 上传覆盖率产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.out
+          retention-days: 7
+
+  # ============================================================================
+  # 构建阶段
+  # ============================================================================
+  go-build:
+    name: 构建 Go 后端
+    runs-on: ubuntu-latest
+    needs: [go-test]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: 检出仓库代码
+        uses: actions/checkout@v4
+
+      - name: 配置 Go 环境
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: 构建二进制文件
+        run: |
+          mkdir -p build
+          go build -v -ldflags "-s -w" -o build/LingFlow .
+          ls -lh build/LingFlow
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: lingflow-binary
+          path: build/LingFlow
+          retention-days: 7
+
+  go-build-lambda:
+    name: 构建 Lambda 部署包
+    runs-on: ubuntu-latest
+    needs: [go-test]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: 检出仓库代码
+        uses: actions/checkout@v4
+
+      - name: 配置 Go 环境
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: 交叉编译 Lambda 二进制
+        run: |
+          mkdir -p build
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -v -ldflags "-s -w" -o build/bootstrap .
+
+      - name: 打包 Lambda 部署文件
+        run: |
+          cd build && zip -j lambda.zip bootstrap
+          ls -lh lambda.zip
+
+      - name: 上传 Lambda 部署包
+        uses: actions/upload-artifact@v4
+        with:
+          name: lambda-package
+          path: build/lambda.zip
+          retention-days: 7
+
+  frontend-build:
+    name: 构建前端静态资源
+    runs-on: ubuntu-latest
+    needs: [go-test]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: 检出仓库代码
+        uses: actions/checkout@v4
+
+      - name: 配置 Bun 环境
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: 安装前端依赖
+        working-directory: demo
+        run: bun install --frozen-lockfile
+
+      - name: 构建前端项目
+        working-directory: demo
+        run: bun run build
+
+      - name: 上传前端产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: demo/dist/
+          retention-days: 7
+
+  # ============================================================================
+  # 安全扫描阶段
+  # ============================================================================
+  codeql-analysis:
+    name: CodeQL 安全分析 (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    needs: [go-format, go-vet]
     strategy:
       fail-fast: false
       matrix:
         include:
           - language: go
             build-mode: autobuild
-        # CodeQL 的 'language' 字段支持以下值：'actions'、'c-cpp'、'csharp'、'go'、'java-kotlin'、'javascript-typescript'、'python'、'ruby'、'rust'、'swift'
-        # 使用 `c-cpp` 分析 C、C++ 或两者兼有的代码
-        # 使用 'java-kotlin' 分析 Java、Kotlin 或两者兼有的代码
-        # 使用 'javascript-typescript' 分析 JavaScript、TypeScript 或两者兼有的代码
-        # 如需了解如何更改分析的语言或自定义构建模式，
-        # 请参阅 https://docs.github.com/en/code-security/code-scanning/creating-an-advanced-setup-for-code-scanning/customizing-your-advanced-setup-for-code-scanning
-        # 如果你正在分析编译型语言，可以修改该语言的 'build-mode' 来自定义代码库的分析方式，
-        # 请参阅 https://docs.github.com/en/code-security/code-scanning/creating-an-advanced-setup-for-code-scanning/codeql-code-scanning-for-compiled-languages
     steps:
       - name: 检出仓库代码
         uses: actions/checkout@v4
 
-      # 在运行 `github/codeql-action/init` 之前，可在此处添加任何环境准备步骤。
-      # 包括安装编译器或运行时环境（如 `actions/setup-node` 等）。
-      # 通常仅在手动构建模式下才需要这些步骤。
-      # - name: 配置运行时环境（示例）
-      #   uses: actions/setup-example@v1
-
-      # 初始化 CodeQL 扫描工具。
       - name: 初始化 CodeQL
         uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
-          # 如需指定自定义查询，可在此处或在配置文件中设置。
-          # 默认情况下，此处列出的查询将覆盖配置文件中指定的查询。
-          # 在列表前加 "+" 前缀可同时使用此处和配置文件中的查询。
 
-          # 有关 CodeQL 查询包的更多详情，请参阅：https://docs.github.com/en/code-security/code-scanning/automatically-scanning-your-code-for-vulnerabilities-and-errors/configuring-code-scanning#using-queries-in-ql-packs
-          # queries: security-extended,security-and-quality
-
-      # 如果分析步骤因 "We were unable to automatically build your code" 而失败，
-      # 请修改上方矩阵，将该语言的构建模式设置为 "manual"，
-      # 然后修改此步骤以手动构建你的代码。
-      # 使用操作系统 Shell 运行的命令行程序。
-      # 参阅 https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idstepsrun
       - name: 执行手动构建步骤
         if: matrix.build-mode == 'manual'
         shell: bash
@@ -93,3 +227,36 @@ jobs:
         uses: github/codeql-action/analyze@v4
         with:
           category: '/language:${{matrix.language}}'
+
+  # ============================================================================
+  # 部署阶段（仅 main 分支，手动触发）
+  # ============================================================================
+  deploy-lambda:
+    name: 部署到 AWS Lambda
+    runs-on: ubuntu-latest
+    needs: [go-build-lambda, codeql-analysis]
+    if: github.ref == 'refs/heads/main'
+    environment:
+      name: production
+      url: https://${{ secrets.AWS_REGION }}.console.aws.amazon.com/lambda
+    steps:
+      - name: 下载 Lambda 部署包
+        uses: actions/download-artifact@v4
+        with:
+          name: lambda-package
+          path: build/
+
+      - name: 配置 AWS 凭证
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: 部署 Lambda 函数
+        run: |
+          aws lambda update-function-code \
+            --function-name LingFlow \
+            --zip-file fileb://build/lambda.zip \
+            --region ${{ secrets.AWS_REGION }}
+          echo "--- 部署完成 ---"
