@@ -1,0 +1,1485 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LingFlow — WebSocket 实时 AI 聊天服务框架</title>
+<meta name="description" content="基于 Go 构建的 WebSocket 实时 AI 聊天服务框架，支持 S3 动态技能加载、事件溯源架构、流式响应" />
+
+<link rel="stylesheet" href="https://unpkg.com/@arco-design/web-react@2.56.0/dist/arco.css" />
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap" rel="stylesheet" />
+
+<style>
+  :root {
+    --bg-deep: #0a0a0f;
+    --bg-surface: #12121a;
+    --bg-card: rgba(18, 18, 26, 0.7);
+    --accent: #ff6b9d;
+    --accent-glow: rgba(255, 107, 157, 0.5);
+    --accent-soft: rgba(255, 107, 157, 0.12);
+    --cyan: #67e8f9;
+    --cyan-glow: rgba(103, 232, 249, 0.4);
+    --text-primary: #f5f5f7;
+    --text-secondary: #a1a1aa;
+    --text-muted: #71717a;
+    --border-glow: rgba(255, 107, 157, 0.3);
+    --border-subtle: rgba(255, 255, 255, 0.08);
+    --font-mono: 'JetBrains Mono', 'SF Mono', 'Menlo', monospace;
+    --font-sans: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: var(--font-sans);
+    background: var(--bg-deep);
+    color: var(--text-primary);
+    overflow-x: hidden;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  #matrix-canvas {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 0;
+    opacity: 0.15;
+    pointer-events: none;
+  }
+
+  .scanlines::before {
+    content: '';
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: repeating-linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0.15) 0px,
+      rgba(0, 0, 0, 0.15) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  .glow-orb {
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(120px);
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  .glow-orb.pink {
+    width: 600px; height: 600px;
+    background: rgba(255, 107, 157, 0.15);
+    top: -200px; right: -100px;
+    animation: float 20s ease-in-out infinite;
+  }
+
+  .glow-orb.cyan {
+    width: 500px; height: 500px;
+    background: rgba(103, 232, 249, 0.1);
+    bottom: -150px; left: -100px;
+    animation: float 25s ease-in-out infinite reverse;
+  }
+
+  @keyframes float {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    33% { transform: translate(50px, -30px) scale(1.1); }
+    66% { transform: translate(-30px, 40px) scale(0.95); }
+  }
+
+  nav {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 100;
+    padding: 18px 48px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    backdrop-filter: blur(20px);
+    background: rgba(10, 10, 15, 0.7);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .nav-logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-weight: 900;
+    font-size: 22px;
+    letter-spacing: -0.5px;
+  }
+
+  .nav-logo-mark {
+    width: 36px; height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    filter: drop-shadow(0 0 12px var(--accent-glow));
+  }
+
+  .nav-logo-mark img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+
+  .nav-links {
+    display: flex;
+    align-items: center;
+    gap: 36px;
+    list-style: none;
+  }
+
+  .nav-links a {
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 500;
+    transition: color 0.3s;
+  }
+
+  .nav-links a:hover { color: var(--accent); }
+
+  .nav-cta {
+    display: flex;
+    gap: 12px;
+  }
+
+  .btn {
+    padding: 10px 24px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border: none;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent), #ec4899);
+    color: #0a0a0f;
+    box-shadow: 0 0 25px var(--accent-glow);
+  }
+
+  .btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 40px var(--accent-glow);
+  }
+
+  .btn-ghost {
+    background: transparent;
+    color: var(--text-primary);
+    border: 1px solid var(--border-subtle);
+  }
+
+  .btn-ghost:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    box-shadow: 0 0 20px rgba(255, 107, 157, 0.2);
+  }
+
+  main {
+    position: relative;
+    z-index: 2;
+  }
+
+  section {
+    padding: 120px 48px;
+    max-width: 1280px;
+    margin: 0 auto;
+  }
+
+  #hero {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding-top: 140px;
+    position: relative;
+  }
+
+  .hero-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 16px;
+    background: var(--accent-soft);
+    border: 1px solid var(--border-glow);
+    border-radius: 100px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--accent);
+    margin-bottom: 32px;
+    width: fit-content;
+  }
+
+  .hero-eyebrow-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 10px var(--accent);
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .hero-title {
+    font-size: clamp(42px, 6vw, 76px);
+    font-weight: 900;
+    line-height: 1.05;
+    letter-spacing: -2px;
+    margin-bottom: 28px;
+  }
+
+  .hero-title .gradient-text {
+    background: linear-gradient(135deg, var(--accent) 0%, #c084fc 50%, var(--cyan) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .hero-title .glitch {
+    position: relative;
+    display: inline-block;
+  }
+
+  .hero-title .glitch::before,
+  .hero-title .glitch::after {
+    content: attr(data-text);
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: linear-gradient(135deg, var(--accent), #c084fc);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .hero-title .glitch::before {
+    left: 2px;
+    text-shadow: -2px 0 var(--cyan);
+    animation: glitch-1 4s infinite linear alternate-reverse;
+    clip-path: polygon(0 0, 100% 0, 100% 45%, 0 45%);
+  }
+
+  .hero-title .glitch::after {
+    left: -2px;
+    text-shadow: -2px 0 var(--accent);
+    animation: glitch-2 3s infinite linear alternate-reverse;
+    clip-path: polygon(0 55%, 100% 55%, 100% 100%, 0 100%);
+  }
+
+  @keyframes glitch-1 {
+    0%, 92%, 100% { transform: translate(0); opacity: 0; }
+    93% { transform: translate(-3px); opacity: 0.8; }
+    95% { transform: translate(2px); opacity: 0.5; }
+    97% { transform: translate(-1px); opacity: 0.7; }
+  }
+
+  @keyframes glitch-2 {
+    0%, 94%, 100% { transform: translate(0); opacity: 0; }
+    95% { transform: translate(3px); opacity: 0.6; }
+    97% { transform: translate(-2px); opacity: 0.8; }
+    99% { transform: translate(1px); opacity: 0.5; }
+  }
+
+  .hero-subtitle {
+    font-size: 20px;
+    color: var(--text-secondary);
+    max-width: 680px;
+    margin-bottom: 44px;
+    line-height: 1.7;
+  }
+
+  .hero-actions {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 60px;
+    flex-wrap: wrap;
+  }
+
+  .hero-meta {
+    display: flex;
+    gap: 48px;
+    flex-wrap: wrap;
+  }
+
+  .hero-meta-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .hero-meta-value {
+    font-family: var(--font-mono);
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  .hero-meta-label {
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+
+  .hero-visual {
+    position: absolute;
+    right: 48px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 520px;
+    height: 420px;
+    opacity: 0.9;
+    pointer-events: none;
+  }
+
+  .terminal-window {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    background: rgba(10, 10, 15, 0.9);
+    border: 1px solid var(--border-glow);
+    border-radius: 12px;
+    box-shadow:
+      0 0 60px rgba(255, 107, 157, 0.15),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    overflow: hidden;
+  }
+
+  .terminal-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border-subtle);
+    background: rgba(18, 18, 26, 0.8);
+  }
+
+  .terminal-dot {
+    width: 12px; height: 12px;
+    border-radius: 50%;
+  }
+
+  .terminal-dot.red { background: #ff5f57; }
+  .terminal-dot.yellow { background: #febc2e; }
+  .terminal-dot.green { background: #28c840; }
+
+  .terminal-title {
+    margin-left: 12px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  .terminal-body {
+    padding: 20px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.8;
+  }
+
+  .terminal-line {
+    opacity: 0;
+    animation: terminalType 0.5s forwards;
+  }
+
+  .terminal-line:nth-child(1) { animation-delay: 0.5s; }
+  .terminal-line:nth-child(2) { animation-delay: 1s; }
+  .terminal-line:nth-child(3) { animation-delay: 1.5s; }
+  .terminal-line:nth-child(4) { animation-delay: 2s; }
+  .terminal-line:nth-child(5) { animation-delay: 2.5s; }
+  .terminal-line:nth-child(6) { animation-delay: 3s; }
+  .terminal-line:nth-child(7) { animation-delay: 3.5s; }
+
+  @keyframes terminalType {
+    from { opacity: 0; transform: translateX(-5px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  .term-prompt { color: var(--accent); }
+  .term-command { color: var(--cyan); }
+  .term-comment { color: var(--text-muted); }
+  .term-output { color: var(--text-secondary); }
+  .term-success { color: #4ade80; }
+  .term-warn { color: #fbbf24; }
+
+  .cursor-blink {
+    display: inline-block;
+    width: 8px;
+    height: 14px;
+    background: var(--accent);
+    margin-left: 4px;
+    animation: blink 1s step-end infinite;
+    vertical-align: middle;
+  }
+
+  @keyframes blink {
+    50% { opacity: 0; }
+  }
+
+  .section-header {
+    text-align: center;
+    margin-bottom: 72px;
+  }
+
+  .section-tag {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--accent);
+    padding: 6px 16px;
+    background: var(--accent-soft);
+    border-radius: 100px;
+    margin-bottom: 20px;
+    border: 1px solid var(--border-glow);
+  }
+
+  .section-title {
+    font-size: clamp(32px, 4vw, 48px);
+    font-weight: 900;
+    letter-spacing: -1px;
+    margin-bottom: 16px;
+  }
+
+  .section-desc {
+    font-size: 17px;
+    color: var(--text-secondary);
+    max-width: 620px;
+    margin: 0 auto;
+  }
+
+  .features-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+  }
+
+  .feature-card {
+    position: relative;
+    padding: 36px 28px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 16px;
+    backdrop-filter: blur(20px);
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+  }
+
+  .feature-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    opacity: 0;
+    transition: opacity 0.4s;
+  }
+
+  .feature-card:hover {
+    border-color: var(--border-glow);
+    transform: translateY(-6px);
+    box-shadow: 0 20px 60px rgba(255, 107, 157, 0.1);
+  }
+
+  .feature-card:hover::before { opacity: 1; }
+
+  .feature-icon {
+    width: 52px; height: 52px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, var(--accent-soft), rgba(192, 132, 252, 0.1));
+    border: 1px solid var(--border-glow);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    margin-bottom: 20px;
+  }
+
+  .feature-title {
+    font-size: 19px;
+    font-weight: 700;
+    margin-bottom: 10px;
+  }
+
+  .feature-desc {
+    font-size: 14px;
+    color: var(--text-secondary);
+    line-height: 1.7;
+  }
+
+  .arch-section {
+    position: relative;
+  }
+
+  .arch-diagram {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 20px;
+    padding: 32px;
+    backdrop-filter: blur(20px);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .arch-diagram img {
+    width: 100%;
+    height: auto;
+    display: block;
+    position: relative;
+    z-index: 1;
+  }
+
+  .arch-diagram::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+      linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+  }
+
+  .arch-details {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+    margin-top: 48px;
+  }
+
+  .arch-detail-card {
+    padding: 28px 24px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 14px;
+    backdrop-filter: blur(10px);
+    transition: all 0.3s;
+  }
+
+  .arch-detail-card:hover {
+    border-color: var(--border-glow);
+    transform: translateY(-4px);
+  }
+
+  .arch-detail-title {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--accent);
+    margin-bottom: 14px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .arch-detail-list {
+    list-style: none;
+  }
+
+  .arch-detail-list li {
+    font-size: 14px;
+    color: var(--text-secondary);
+    padding: 6px 0;
+    padding-left: 18px;
+    position: relative;
+  }
+
+  .arch-detail-list li::before {
+    content: '◆';
+    position: absolute;
+    left: 0;
+    color: var(--cyan);
+    font-size: 10px;
+    top: 8px;
+  }
+
+  .skills-section {
+    position: relative;
+  }
+
+  .skill-flow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+    margin: 60px 0;
+    flex-wrap: wrap;
+  }
+
+  .flow-node {
+    padding: 20px 28px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--text-primary);
+    backdrop-filter: blur(10px);
+    transition: all 0.3s;
+  }
+
+  .flow-node.accent {
+    border-color: var(--border-glow);
+    box-shadow: 0 0 30px rgba(255, 107, 157, 0.15);
+  }
+
+  .flow-arrow {
+    color: var(--accent);
+    font-size: 24px;
+    animation: arrowPulse 2s ease-in-out infinite;
+  }
+
+  @keyframes arrowPulse {
+    0%, 100% { transform: translateX(0); opacity: 1; }
+    50% { transform: translateX(6px); opacity: 0.6; }
+  }
+
+  .skill-cards {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-top: 48px;
+  }
+
+  .skill-card {
+    padding: 20px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.3s;
+    backdrop-filter: blur(10px);
+  }
+
+  .skill-card:hover {
+    border-color: var(--border-glow);
+    transform: translateY(-4px);
+    box-shadow: 0 12px 40px rgba(255, 107, 157, 0.12);
+  }
+
+  .skill-name {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--accent);
+    margin-bottom: 8px;
+  }
+
+  .skill-desc {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.6;
+  }
+
+  .skill-flow-img {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 20px;
+    padding: 32px;
+    backdrop-filter: blur(20px);
+    margin: 48px 0;
+  }
+
+  .skill-flow-img img {
+    width: 100%;
+    max-width: 500px;
+    margin: 0 auto;
+    display: block;
+  }
+
+  .demo-section {
+    position: relative;
+  }
+
+  .demo-screenshot {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 20px;
+    padding: 24px;
+    backdrop-filter: blur(20px);
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.4);
+    transform: perspective(1200px) rotateX(2deg);
+    transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .demo-screenshot:hover {
+    transform: perspective(1200px) rotateX(0deg);
+  }
+
+  .demo-screenshot img {
+    width: 100%;
+    border-radius: 12px;
+    display: block;
+  }
+
+  .protocol-section {
+    position: relative;
+  }
+
+  .protocol-diagram {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 20px;
+    padding: 32px;
+    backdrop-filter: blur(20px);
+    margin: 48px 0;
+  }
+
+  .protocol-diagram img {
+    width: 100%;
+    max-width: 700px;
+    margin: 0 auto;
+    display: block;
+  }
+
+  .flow-gallery {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 24px;
+    margin-top: 48px;
+  }
+
+  .flow-gallery-item {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 16px;
+    padding: 24px;
+    backdrop-filter: blur(20px);
+    transition: all 0.3s;
+  }
+
+  .flow-gallery-item:hover {
+    border-color: var(--border-glow);
+    transform: translateY(-4px);
+    box-shadow: 0 20px 50px rgba(255, 107, 157, 0.1);
+  }
+
+  .flow-gallery-title {
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .flow-gallery-title::before {
+    content: '';
+    width: 4px;
+    height: 18px;
+    background: linear-gradient(180deg, var(--accent), #c084fc);
+    border-radius: 2px;
+  }
+
+  .flow-gallery-item img {
+    width: 100%;
+    border-radius: 8px;
+    opacity: 0.9;
+  }
+
+  .deploy-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+  }
+
+  .deploy-card {
+    position: relative;
+    padding: 36px 28px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 16px;
+    backdrop-filter: blur(20px);
+    transition: all 0.3s;
+  }
+
+  .deploy-card:hover {
+    border-color: var(--border-glow);
+    transform: translateY(-4px);
+  }
+
+  .deploy-badge {
+    position: absolute;
+    top: -12px;
+    right: 20px;
+    padding: 4px 12px;
+    background: var(--accent);
+    color: #0a0a0f;
+    font-size: 11px;
+    font-weight: 700;
+    border-radius: 100px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .deploy-icon {
+    font-size: 36px;
+    margin-bottom: 16px;
+  }
+
+  .deploy-title {
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+
+  .deploy-desc {
+    font-size: 14px;
+    color: var(--text-secondary);
+    line-height: 1.7;
+    margin-bottom: 20px;
+  }
+
+  .deploy-features {
+    list-style: none;
+  }
+
+  .deploy-features li {
+    font-size: 13px;
+    color: var(--text-secondary);
+    padding: 6px 0;
+    padding-left: 22px;
+    position: relative;
+  }
+
+  .deploy-features li::before {
+    content: '→';
+    position: absolute;
+    left: 0;
+    color: var(--accent);
+    font-family: var(--font-mono);
+  }
+
+  .cta-section {
+    text-align: center;
+    padding: 140px 48px;
+    position: relative;
+  }
+
+  .cta-bg {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at center, rgba(255, 107, 157, 0.08) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .cta-title {
+    font-size: clamp(36px, 5vw, 56px);
+    font-weight: 900;
+    letter-spacing: -1px;
+    margin-bottom: 20px;
+    position: relative;
+  }
+
+  .cta-desc {
+    font-size: 18px;
+    color: var(--text-secondary);
+    max-width: 600px;
+    margin: 0 auto 40px;
+    position: relative;
+  }
+
+  .cta-actions {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    flex-wrap: wrap;
+    position: relative;
+  }
+
+  footer {
+    position: relative;
+    z-index: 2;
+    padding: 48px;
+    border-top: 1px solid var(--border-subtle);
+    background: rgba(10, 10, 15, 0.8);
+    backdrop-filter: blur(20px);
+  }
+
+  .footer-inner {
+    max-width: 1280px;
+    margin: 0 auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 48px;
+  }
+
+  .footer-brand {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-width: 300px;
+  }
+
+  .footer-logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 900;
+    font-size: 20px;
+  }
+
+  .footer-logo img {
+    width: 32px;
+    height: 32px;
+    filter: drop-shadow(0 0 8px var(--accent-glow));
+  }
+
+  .footer-tagline {
+    font-size: 13px;
+    color: var(--text-muted);
+    line-height: 1.6;
+  }
+
+  .footer-copy {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 8px;
+  }
+
+  .footer-cols {
+    display: flex;
+    gap: 48px;
+    flex-wrap: wrap;
+  }
+
+  .footer-col {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .footer-col-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+  }
+
+  .footer-links {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .footer-links a {
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-size: 13px;
+    transition: color 0.3s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .footer-links a:hover { color: var(--accent); }
+
+  .footer-links a::before {
+    content: '→';
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--accent);
+    opacity: 0.6;
+  }
+
+  .reveal {
+    opacity: 0;
+    transform: translateY(30px);
+    transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .reveal.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  @media (max-width: 1024px) {
+    .features-grid { grid-template-columns: repeat(2, 1fr); }
+    .arch-grid { grid-template-columns: 1fr; }
+    .skill-cards { grid-template-columns: repeat(2, 1fr); }
+    .deploy-grid { grid-template-columns: 1fr; }
+    .hero-visual { display: none; }
+    nav { padding: 18px 24px; }
+    section { padding: 80px 24px; }
+    .nav-links { display: none; }
+  }
+
+  @media (max-width: 640px) {
+    .features-grid { grid-template-columns: 1fr; }
+    .skill-cards { grid-template-columns: 1fr; }
+    .hero-meta { gap: 24px; }
+    .skill-flow { flex-direction: column; }
+    .flow-arrow { transform: rotate(90deg); }
+  }
+</style>
+</head>
+<body class="scanlines">
+
+<canvas id="matrix-canvas"></canvas>
+<div class="glow-orb pink"></div>
+<div class="glow-orb cyan"></div>
+
+<nav>
+  <div class="nav-logo">
+    <div class="nav-logo-mark">
+      <img src="images/logo.svg" alt="LingFlow Logo" />
+    </div>
+    <span>LingFlow</span>
+  </div>
+  <ul class="nav-links">
+    <li><a href="#features">核心特性</a></li>
+    <li><a href="#architecture">系统架构</a></li>
+    <li><a href="#skills">技能系统</a></li>
+    <li><a href="#protocol">协议规范</a></li>
+    <li><a href="#demo">演示应用</a></li>
+    <li><a href="#deploy">部署方式</a></li>
+    <li><a href="https://github.com/ctkqiang/LingFlow" target="_blank">GitHub</a></li>
+  </ul>
+  <div class="nav-cta">
+    <a href="doc.html" class="btn btn-ghost">文档</a>
+    <a href="https://github.com/ctkqiang/LingFlow" target="_blank" class="btn btn-primary">快速开始</a>
+  </div>
+</nav>
+
+<main>
+
+  <section id="hero">
+    <div class="hero-eyebrow">
+      <span class="hero-eyebrow-dot"></span>
+      <span>WebSocket · S3 · Event Sourcing</span>
+    </div>
+    <h1 class="hero-title">
+      实时 AI 聊天<br/>
+      <span class="gradient-text glitch" data-text="技能即代码">技能即代码</span>
+    </h1>
+    <p class="hero-subtitle">
+      基于 Go 构建的高性能 WebSocket AI 服务框架，S3 动态技能加载赋能 LLM，
+      事件溯源管理会话生命周期，流式透明的思考与响应过程。
+    </p>
+    <div class="hero-actions">
+      <a href="https://github.com/ctkqiang/LingFlow" target="_blank" class="btn btn-primary" style="font-size: 15px; padding: 14px 32px;">
+        开始使用 →
+      </a>
+      <a href="#features" class="btn btn-ghost" style="font-size: 15px; padding: 14px 32px;">
+        了解更多
+      </a>
+    </div>
+    <div class="hero-meta">
+      <div class="hero-meta-item">
+        <span class="hero-meta-value">~2ms</span>
+        <span class="hero-meta-label">消息延迟</span>
+      </div>
+      <div class="hero-meta-item">
+        <span class="hero-meta-value">10k+</span>
+        <span class="hero-meta-label">并发连接</span>
+      </div>
+      <div class="hero-meta-item">
+        <span class="hero-meta-value">0s</span>
+        <span class="hero-meta-label">技能热更新</span>
+      </div>
+      <div class="hero-meta-item">
+        <span class="hero-meta-value">7层</span>
+        <span class="hero-meta-label">安全防护</span>
+      </div>
+    </div>
+    <div class="hero-visual">
+      <div class="terminal-window">
+        <div class="terminal-header">
+          <div class="terminal-dot red"></div>
+          <div class="terminal-dot yellow"></div>
+          <div class="terminal-dot green"></div>
+          <span class="terminal-title">lingflow — zsh</span>
+        </div>
+        <div class="terminal-body">
+          <div class="terminal-line"><span class="term-prompt">$</span> <span class="term-command">go run main.go</span></div>
+          <div class="terminal-line"><span class="term-comment">// 启动 LingFlow 服务...</span></div>
+          <div class="terminal-line"><span class="term-output">[INFO]</span> WebSocket 服务启动 :4030</div>
+          <div class="terminal-line"><span class="term-output">[INFO]</span> 从 S3 加载技能 ... 已加载 12 个技能</div>
+          <div class="terminal-line"><span class="term-output">[INFO]</span> 事件溯源存储已就绪</div>
+          <div class="terminal-line"><span class="term-success">[OK]</span> 服务运行中 - MODE: production</div>
+          <div class="terminal-line"><span class="term-prompt">$</span> <span class="cursor-blink"></span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="features" class="reveal">
+    <div class="section-header">
+      <span class="section-tag">// 核心特性</span>
+      <h2 class="section-title">为生产环境而生</h2>
+      <p class="section-desc">
+        从实时通信到安全防护，LingFlow 提供构建企业级 AI 聊天应用所需的一切能力
+      </p>
+    </div>
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-icon">⚡</div>
+        <h3 class="feature-title">流式透明响应</h3>
+        <p class="feature-desc">
+          客户端实时接收 AI 思考过程与最终响应，system_thinking + system_response 双阶段流式推送，完全可控可追溯。
+        </p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📦</div>
+        <h3 class="feature-title">S3 技能热加载</h3>
+        <p class="feature-desc">
+          技能以 Markdown 文件存储于 S3，无需重新编译即可热更新。支持动态加载、关键词检索、智能匹配。
+        </p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🔗</div>
+        <h3 class="feature-title">事件溯源架构</h3>
+        <p class="feature-desc">
+          所有状态变更以不可变事件记录，支持完整审计追踪、会话回放、时间旅行调试。
+        </p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🛡️</div>
+        <h3 class="feature-title">七层安全防护</h3>
+        <p class="feature-desc">
+          Token 认证、Origin 白名单、IP 限流、速率限制、提示注入检测、内容审查、Guardrail 集成。
+        </p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🤖</div>
+        <h3 class="feature-title">AI 技能创建</h3>
+        <p class="feature-desc">
+          通过 #create_skill 命令让 AI 自动生成技能，两阶段提交 + 事务锁 + 速率限制确保安全可靠。
+        </p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">☁️</div>
+        <h3 class="feature-title">多云部署支持</h3>
+        <p class="feature-desc">
+          支持本地服务器、Docker、Kubernetes、AWS Lambda + API Gateway 多种部署方式，灵活扩展。
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section id="architecture" class="arch-section reveal">
+    <div class="section-header">
+      <span class="section-tag">// 系统架构</span>
+      <h2 class="section-title">分层设计，松耦合架构</h2>
+      <p class="section-desc">
+        清晰的层次划分，从连接管理到服务编排，每一层都独立可扩展
+      </p>
+    </div>
+    <div class="arch-diagram">
+      <img src="images/architecture.png" alt="LingFlow 系统架构图" />
+    </div>
+    <div class="arch-details">
+      <div class="arch-detail-card">
+        <div class="arch-detail-title">连接层</div>
+        <ul class="arch-detail-list">
+          <li>WebSocket 连接管理</li>
+          <li>心跳检测引擎</li>
+          <li>认证与鉴权</li>
+          <li>Origin / IP 限制</li>
+          <li>连接池管理</li>
+        </ul>
+      </div>
+      <div class="arch-detail-card">
+        <div class="arch-detail-title">服务层</div>
+        <ul class="arch-detail-list">
+          <li>消息路由分发</li>
+          <li>流式响应编排</li>
+          <li>技能检索执行</li>
+          <li>AI 技能创建器</li>
+          <li>提示注入防护</li>
+        </ul>
+      </div>
+      <div class="arch-detail-card">
+        <div class="arch-detail-title">基础设施层</div>
+        <ul class="arch-detail-list">
+          <li>AWS Bedrock LLM</li>
+          <li>S3 技能存储</li>
+          <li>事件溯源存储</li>
+          <li>聚合与投影</li>
+          <li>命令总线</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section id="skills" class="skills-section reveal">
+    <div class="section-header">
+      <span class="section-tag">// 技能系统</span>
+      <h2 class="section-title">技能即 Markdown</h2>
+      <p class="section-desc">
+        一个 .md 文件就是一个技能，S3 存储即开即用，AI 自动创建秒级上线
+      </p>
+    </div>
+    <div class="skill-flow-img">
+      <img src="images/skill_retrieval.png" alt="LingFlow 技能检索机制" />
+    </div>
+    <div class="skill-cards">
+      <div class="skill-card">
+        <div class="skill-name">/vulnerability_scanner</div>
+        <div class="skill-desc">检测系统漏洞和安全威胁，提供安全评估报告与修复建议</div>
+      </div>
+      <div class="skill-card">
+        <div class="skill-name">/threat_intel</div>
+        <div class="skill-desc">分析安全威胁情报和攻击趋势，追踪最新漏洞与 CVE</div>
+      </div>
+      <div class="skill-card">
+        <div class="skill-name">/security_audit</div>
+        <div class="skill-desc">系统配置安全审计，合规性检查与加固建议</div>
+      </div>
+      <div class="skill-card">
+        <div class="skill-name">#create_skill</div>
+        <div class="skill-desc">AI 自动生成新技能，两阶段提交确保安全可靠</div>
+      </div>
+    </div>
+  </section>
+
+  <section id="protocol" class="protocol-section reveal">
+    <div class="section-header">
+      <span class="section-tag">// WebSocket 协议</span>
+      <h2 class="section-title">流式透明，实时响应</h2>
+      <p class="section-desc">
+        完整的消息协议体系，思考过程与最终响应双阶段流式推送
+      </p>
+    </div>
+    <div class="protocol-diagram">
+      <img src="images/ws.png" alt="LingFlow WebSocket 协议" />
+    </div>
+    <div class="flow-gallery">
+      <div class="flow-gallery-item">
+        <div class="flow-gallery-title">消息处理流程</div>
+        <img src="images/message_flow.png" alt="消息处理流程图" />
+      </div>
+      <div class="flow-gallery-item">
+        <div class="flow-gallery-title">认证流程</div>
+        <img src="images/auth_flow.png" alt="认证流程图" />
+      </div>
+      <div class="flow-gallery-item">
+        <div class="flow-gallery-title">事件溯源架构</div>
+        <img src="images/event_sourcing.png" alt="事件溯源架构图" />
+      </div>
+      <div class="flow-gallery-item">
+        <div class="flow-gallery-title">技能创建流水线</div>
+        <img src="images/create_skill_pipeline.png" alt="技能创建流水线图" />
+      </div>
+    </div>
+  </section>
+
+  <section id="demo" class="demo-section reveal">
+    <div class="section-header">
+      <span class="section-tag">// 演示应用</span>
+      <h2 class="section-title">Vue 3 + TypeScript 前端</h2>
+      <p class="section-desc">
+        完整的前端演示应用，MVVM 架构，生产就绪的中文交互界面
+      </p>
+    </div>
+    <div class="demo-screenshot">
+      <img src="images/demo.png" alt="LingFlow 演示应用截图" />
+    </div>
+  </section>
+
+  <section id="deploy" class="deploy-section reveal">
+    <div class="section-header">
+      <span class="section-tag">// 部署方式</span>
+      <h2 class="section-title">灵活的部署选项</h2>
+      <p class="section-desc">
+        从单节点到 Kubernetes 集群，从传统服务器到 Serverless，随业务规模自由选择
+      </p>
+    </div>
+    <div class="deploy-grid">
+      <div class="deploy-card">
+        <span class="deploy-badge">推荐入门</span>
+        <div class="deploy-icon">🐳</div>
+        <h3 class="deploy-title">Docker 部署</h3>
+        <p class="deploy-desc">快速启动，适合中小型项目和开发测试环境</p>
+        <ul class="deploy-features">
+          <li>单命令启动</li>
+          <li>环境变量配置</li>
+          <li>水平扩展简单</li>
+          <li>资源占用低</li>
+        </ul>
+      </div>
+      <div class="deploy-card">
+        <span class="deploy-badge">生产级</span>
+        <div class="deploy-icon">☸️</div>
+        <h3 class="deploy-title">Kubernetes</h3>
+        <p class="deploy-desc">企业级容器编排，适合大规模生产环境</p>
+        <ul class="deploy-features">
+          <li>自动扩缩容</li>
+          <li>滚动更新零停机</li>
+          <li>健康检查自愈</li>
+          <li>Ingress + TLS</li>
+        </ul>
+      </div>
+      <div class="deploy-card">
+        <span class="deploy-badge">Serverless</span>
+        <div class="deploy-icon">⚡</div>
+        <h3 class="deploy-title">AWS Lambda</h3>
+        <p class="deploy-desc">按调用付费，极致弹性，无需管理服务器</p>
+        <ul class="deploy-features">
+          <li>零运维成本</li>
+          <li>自动弹性伸缩</li>
+          <li>API Gateway 集成</li>
+          <li>按需计费</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="cta-section">
+    <div class="cta-bg"></div>
+    <span class="section-tag">// 立即开始</span>
+    <h2 class="cta-title">构建下一代 AI 聊天应用</h2>
+    <p class="cta-desc">
+      加入 LingFlow，用 S3 技能 + 事件溯源 + 流式响应，打造生产级实时 AI 服务
+    </p>
+    <div class="cta-actions">
+      <a href="https://github.com/ctkqiang/LingFlow" target="_blank" class="btn btn-primary" style="font-size: 16px; padding: 16px 36px;">
+        GitHub 仓库 →
+      </a>
+      <a href="getting-started.html" class="btn btn-ghost" style="font-size: 16px; padding: 16px 36px;">
+        查看文档
+      </a>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-brand">
+      <div class="footer-logo">
+        <img src="images/logo.svg" alt="LingFlow Logo" />
+        <span>LingFlow</span>
+      </div>
+      <p class="footer-tagline">
+        基于 Go 构建的 WebSocket 实时 AI 聊天服务框架，S3 动态技能加载，事件溯源架构
+      </p>
+      <p class="footer-copy">© 2026 LingFlow. MIT License. Built with Go.</p>
+    </div>
+    <div class="footer-cols">
+      <div class="footer-col">
+        <div class="footer-col-title">代码仓库</div>
+        <ul class="footer-links">
+          <li><a href="https://github.com/ctkqiang/LingFlow" target="_blank">GitHub</a></li>
+          <li><a href="https://gitcode.com/ctkqiang/LingFlow" target="_blank">GitCode</a></li>
+          <li><a href="https://gitee.com/ctkqiang/LingFlow" target="_blank">Gitee</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <div class="footer-col-title">文档资源</div>
+        <ul class="footer-links">
+          <li><a href="getting-started.html">快速开始</a></li>
+          <li><a href="configuration.html">环境配置</a></li>
+          <li><a href="websocket-protocol.html">WebSocket 协议</a></li>
+          <li><a href="skills.html">技能系统</a></li>
+          <li><a href="architecture.html">系统架构</a></li>
+          <li><a href="deployment.html">部署指南</a></li>
+          <li><a href="security.html">认证与安全</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <div class="footer-col-title">社区支持</div>
+        <ul class="footer-links">
+          <li><a href="https://github.com/ctkqiang/LingFlow/issues" target="_blank">提交 Issue</a></li>
+          <li><a href="https://github.com/ctkqiang/LingFlow/discussions" target="_blank">讨论区</a></li>
+          <li><a href="https://github.com/ctkqiang/LingFlow/blob/main/SECURITY.md" target="_blank">安全政策</a></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<script>
+  // Matrix rain effect
+  const canvas = document.getElementById('matrix-canvas');
+  const ctx = canvas.getContext('2d');
+
+  let width = canvas.width = window.innerWidth;
+  let height = canvas.height = window.innerHeight;
+
+  const chars = '01アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン';
+  const fontSize = 14;
+  const columns = Math.floor(width / fontSize);
+  const drops = Array(columns).fill(1);
+
+  function drawMatrix() {
+    ctx.fillStyle = 'rgba(10, 10, 15, 0.05)';
+    ctx.fillRect(0, 0, width, height);
+
+    ctx.fillStyle = 'rgba(255, 107, 157, 0.3)';
+    ctx.font = fontSize + 'px monospace';
+
+    for (let i = 0; i < drops.length; i++) {
+      const text = chars[Math.floor(Math.random() * chars.length)];
+      ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+
+      if (drops[i] * fontSize > height && Math.random() > 0.975) {
+        drops[i] = 0;
+      }
+      drops[i]++;
+    }
+  }
+
+  setInterval(drawMatrix, 50);
+
+  window.addEventListener('resize', () => {
+    width = canvas.width = window.innerWidth;
+    height = canvas.height = window.innerHeight;
+  });
+
+  // Scroll reveal
+  const revealEls = document.querySelectorAll('.reveal');
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+      }
+    });
+  }, { threshold: 0.1 });
+
+  revealEls.forEach(el => observer.observe(el));
+
+  // Smooth scroll for nav links
+  document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+    anchor.addEventListener('click', function(e) {
+      const target = document.querySelector(this.getAttribute('href'));
+      if (target) {
+        e.preventDefault();
+        target.scrollIntoView({ behavior: 'smooth' });
+      }
+    });
+  });
+
+  // Nav background on scroll
+  const nav = document.querySelector('nav');
+  window.addEventListener('scroll', () => {
+    if (window.scrollY > 50) {
+      nav.style.background = 'rgba(10, 10, 15, 0.9)';
+    } else {
+      nav.style.background = 'rgba(10, 10, 15, 0.7)';
+    }
+  });
+</script>
+
+</body>
+</html>

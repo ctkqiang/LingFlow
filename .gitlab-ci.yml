@@ -102,18 +102,10 @@ go:build:lambda:
 # ============================================================================
 # 安全扫描阶段
 # ============================================================================
-
-sast:
-  stage: security
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == "main"
-
-dependency_scanning:
-  stage: security
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == "main"
+# 仅使用 GitLab 免费版可用的安全扫描模板。
+# SAST 和 Dependency Scanning 需要 GitLab Ultimate 许可证，已排除。
+# Secret Detection 和 Semgrep SAST 在免费版可用。
+# ============================================================================
 
 secret_detection:
   stage: security
@@ -122,8 +114,6 @@ secret_detection:
     - if: $CI_COMMIT_BRANCH == "main"
 
 include:
-  - template: Security/SAST.gitlab-ci.yml
-  - template: Security/Dependency-Scanning.gitlab-ci.yml
   - template: Security/Secret-Detection.gitlab-ci.yml
 
 # ============================================================================

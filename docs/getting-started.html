@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>快速开始 — LingFlow 文档</title>
+<meta name="description" content="LingFlow 快速开始指南：从克隆项目到启动服务的完整流程，支持 Mock 模式零凭证体验。" />
+
+<link rel="stylesheet" href="https://unpkg.com/@arco-design/web-react@2.56.0/dist/arco.css" />
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap" rel="stylesheet" />
+
+<link rel="stylesheet" href="docs.css" />
+</head>
+<body>
+
+<button class="doc-mobile-toggle" id="docSidebarToggle" aria-label="切换侧边栏">≡</button>
+
+<div class="doc-layout">
+
+  <aside class="doc-sidebar" id="docSidebar">
+    <div class="doc-sidebar-logo">
+      <img src="images/logo.svg" alt="LingFlow Logo" />
+      <span>LingFlow</span>
+    </div>
+
+    <div class="doc-nav-section">
+      <div class="doc-nav-title">入门指南</div>
+      <a class="doc-nav-link active" href="getting-started.html">快速开始</a>
+      <a class="doc-nav-link" href="configuration.html">环境配置</a>
+    </div>
+
+    <div class="doc-nav-section">
+      <div class="doc-nav-title">核心功能</div>
+      <a class="doc-nav-link" href="websocket-protocol.html">WebSocket 协议</a>
+      <a class="doc-nav-link" href="skills.html">技能系统</a>
+      <a class="doc-nav-link" href="architecture.html">系统架构</a>
+    </div>
+
+    <div class="doc-nav-section">
+      <div class="doc-nav-title">参考文档</div>
+      <a class="doc-nav-link" href="deployment.html">部署指南</a>
+      <a class="doc-nav-link" href="security.html">认证与安全</a>
+      <a class="doc-nav-link" href="index.html">返回首页</a>
+    </div>
+  </aside>
+
+  <main class="doc-main">
+
+    <header class="doc-header">
+      <div class="doc-breadcrumb">
+        <a href="index.html">首页</a> / <a href="getting-started.html">入门指南</a> / 快速开始
+      </div>
+      <h1 class="doc-title">快速开始</h1>
+      <p class="doc-desc">
+        本指南将带你从零完成 LingFlow 的本地启动：克隆仓库、配置环境变量、启动服务、验证连接，
+        并可选择启动前端演示应用。完整流程约 5 分钟。
+      </p>
+    </header>
+
+    <section class="doc-section" id="prerequisites">
+      <h2 class="doc-section-title">前置条件</h2>
+      <p class="doc-p">
+        在开始之前，请确认本地环境已安装以下依赖。<strong>Mock 模式</strong>下仅需 Go 即可运行，
+        无需真实 AWS 凭证；若需对接真实 LLM 与 S3 技能存储，请准备完整的 AWS 凭证。
+      </p>
+
+      <table class="doc-table">
+        <thead>
+          <tr>
+            <th>依赖</th>
+            <th>最低版本</th>
+            <th>说明</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Go</td>
+            <td>1.26.1</td>
+            <td>Go 编程语言运行时</td>
+          </tr>
+          <tr>
+            <td>AWS CLI</td>
+            <td>2.x</td>
+            <td>AWS 命令行工具（配置凭证）</td>
+          </tr>
+          <tr>
+            <td>Bun</td>
+            <td>1.x</td>
+            <td>前端包管理工具（演示用）</td>
+          </tr>
+          <tr>
+            <td>AWS 账户</td>
+            <td>—</td>
+            <td>需要 S3 和 Bedrock 访问权限</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="doc-section" id="step-1-clone">
+      <h2 class="doc-section-title">步骤 1：克隆项目</h2>
+      <p class="doc-p">
+        将 LingFlow 仓库克隆到本地工作目录。如果你 fork 了仓库，请替换为你的仓库地址。
+      </p>
+
+      <div class="doc-code-block">
+        <div class="doc-code-header">
+          <span class="doc-code-lang">bash</span>
+          <button class="doc-code-copy" data-copy>copy</button>
+        </div>
+        <div class="doc-code-body">
+<pre><code>git clone &lt;your-repository-url&gt;
+cd LingFlow</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="doc-section" id="step-2-env">
+      <h2 class="doc-section-title">步骤 2：配置环境变量</h2>
+      <p class="doc-p">
+        LingFlow 通过 <code>.env</code> 文件管理运行配置。从示例文件复制一份并填入你的 AWS 凭证和配置。
+      </p>
+
+      <div class="doc-code-block">
+        <div class="doc-code-header">
+          <span class="doc-code-lang">bash</span>
+          <button class="doc-code-copy" data-copy>copy</button>
+        </div>
+        <div class="doc-code-body">
+<pre><code>cp .env.example .env</code></pre>
+        </div>
+      </div>
+
+      <p class="doc-p">
+        编辑 <code>.env</code> 文件，填入 AWS 凭证和配置。若你只是想快速体验，
+        可以使用 <strong>Mock 模式</strong>跳过真实 AWS 凭证。
+      </p>
+
+      <h3 class="doc-subsection-title">最小可运行配置（Mock 模式）</h3>
+
+      <div class="doc-code-block">
+        <div class="doc-code-header">
+          <span class="doc-code-lang">bash</span>
+          <button class="doc-code-copy" data-copy>copy</button>
+        </div>
+        <div class="doc-code-body">
+<pre><code>LLM_MOCK_MODE=true
+MODE=development</code></pre>
+        </div>
+      </div>
+
+      <div class="doc-note">
+        <strong>提示：</strong>使用 Mock 模式无需真实 AWS 凭证即可快速启动和测试。
+        服务会返回模拟的 LLM 响应，便于本地开发与功能验证。
+      </div>
+    </section>
+
+    <section class="doc-section" id="step-3-run">
+      <h2 class="doc-section-title">步骤 3：启动服务</h2>
+      <p class="doc-p">
+        通过 Go 直接运行或编译为二进制后运行，两种方式任选其一。服务启动后监听
+        <code>ws://localhost:4030/chat/{会话ID}</code>。
+      </p>
+
+      <div class="doc-code-block">
+        <div class="doc-code-header">
+          <span class="doc-code-lang">bash</span>
+          <button class="doc-code-copy" data-copy>copy</button>
+        </div>
+        <div class="doc-code-body">
+<pre><code># 直接运行
+go run main.go
+
+# 或编译后运行
+go build -o lingflow main.go
+./lingflow</code></pre>
+        </div>
+      </div>
+
+      <p class="doc-p">
+        服务启动后监听 <code>ws://localhost:4030/chat/{会话ID}</code>。
+        控制台会输出加载的技能数量、事件溯源状态等关键信息。
+      </p>
+    </section>
+
+    <section class="doc-section" id="step-4-verify">
+      <h2 class="doc-section-title">步骤 4：验证服务</h2>
+      <p class="doc-p">
+        通过 HTTP 接口获取认证 Token，然后使用该 Token 建立 WebSocket 连接。
+      </p>
+
+      <h3 class="doc-subsection-title">获取认证 Token</h3>
+
+      <div class="doc-code-block">
+        <div class="doc-code-header">
+          <span class="doc-code-lang">bash</span>
+          <button class="doc-code-copy" data-copy>copy</button>
+        </div>
+        <div class="doc-code-body">
+<pre><code>curl -X POST http://localhost:4030/api/auth/token \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "test-user"}'</code></pre>
+        </div>
+      </div>
+
+      <h3 class="doc-subsection-title">预期响应</h3>
+
+      <div class="doc-code-block">
+        <div class="doc-code-header">
+          <span class="doc-code-lang">json</span>
+          <button class="doc-code-copy" data-copy>copy</button>
+        </div>
+        <div class="doc-code-body">
+<pre><code>{
+  "token": "debug-token-test-user",
+  "expires_at": 0,
+  "user_id": "test-user",
+  "ttl": "unlimited"
+}</code></pre>
+        </div>
+      </div>
+
+      <h3 class="doc-subsection-title">WebSocket 连接</h3>
+      <p class="doc-p">
+        拿到 Token 后，即可通过 WebSocket 客户端连接到 LingFlow 进行对话。
+        将 <code>{会话ID}</code> 替换为任意唯一字符串以隔离不同会话。
+      </p>
+
+      <div class="doc-code-block">
+        <div class="doc-code-header">
+          <span class="doc-code-lang">text</span>
+          <button class="doc-code-copy" data-copy>copy</button>
+        </div>
+        <div class="doc-code-body">
+<pre><code>ws://localhost:4030/chat/my-session?token=debug-token-test-user</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="doc-section" id="step-5-demo">
+      <h2 class="doc-section-title">步骤 5：启动前端演示（可选）</h2>
+      <p class="doc-p">
+        LingFlow 提供基于 Vue 3 + TypeScript 的前端演示应用，采用 MVVM 架构，
+        可用于直观体验 WebSocket 流式响应与技能调用。
+      </p>
+
+      <div class="doc-code-block">
+        <div class="doc-code-header">
+          <span class="doc-code-lang">bash</span>
+          <button class="doc-code-copy" data-copy>copy</button>
+        </div>
+        <div class="doc-code-body">
+<pre><code>cd demo
+bun install
+bun run dev</code></pre>
+        </div>
+      </div>
+
+      <p class="doc-p">
+        访问 <code>http://localhost:3000</code> 查看演示界面。
+        演示应用默认连接本地的 LingFlow 服务，可在设置中修改后端地址。
+      </p>
+    </section>
+
+    <section class="doc-section" id="project-structure">
+      <h2 class="doc-section-title">项目结构概览</h2>
+      <p class="doc-p">
+        LingFlow 采用清晰的分层架构，核心代码位于 <code>internal/</code> 目录下，
+        按职责拆分为连接管理、事件溯源、数据模型、业务服务和工具函数。
+      </p>
+
+      <div class="doc-code-block">
+        <div class="doc-code-header">
+          <span class="doc-code-lang">text</span>
+          <button class="doc-code-copy" data-copy>copy</button>
+        </div>
+        <div class="doc-code-body">
+<pre><code>LingFlow/
+├── main.go                         # 应用入口
+├── internal/
+│   ├── connections/wss.go          # WebSocket 连接管理
+│   ├── events/                     # 事件溯源（Event Sourcing）
+│   ├── models/                     # 数据模型定义
+│   ├── services/                   # 核心业务服务
+│   └── utilities/                  # 工具函数
+├── demo/                           # Vue 3 前端演示
+├── k8s/                            # Kubernetes 部署配置
+├── docs/                           # 文档和图片资源
+├── .github/                        # GitHub 社区健康文件
+├── .gitcode/                       # GitCode 模板
+├── .gitee/                         # Gitee 模板
+├── .env.example                    # 环境变量示例
+└── README.md                       # 项目文档</code></pre>
+        </div>
+      </div>
+
+      <p class="doc-p">
+        各目录职责说明：
+      </p>
+
+      <ul class="doc-ul">
+        <li><strong>main.go</strong> — 应用入口，负责初始化配置、注册路由、启动 HTTP 服务。</li>
+        <li><strong>internal/connections/</strong> — WebSocket 连接管理、心跳检测、认证鉴权。</li>
+        <li><strong>internal/events/</strong> — 事件溯源实现，包含聚合根、事件总线、命令总线、事件存储。</li>
+        <li><strong>internal/models/</strong> — 数据模型与响应结构定义。</li>
+        <li><strong>internal/services/</strong> — 核心业务服务，包括聊天处理、技能执行、S3 加载等。</li>
+        <li><strong>internal/utilities/</strong> — 通用工具函数，如配置加载、日志、AWS 工具。</li>
+        <li><strong>demo/</strong> — Vue 3 + TypeScript 前端演示应用。</li>
+        <li><strong>k8s/</strong> — Kubernetes 部署所需的 Deployment、Service、Ingress 等清单。</li>
+      </ul>
+    </section>
+
+  </main>
+</div>
+
+<script>
+  // 移动端侧边栏切换
+  (function () {
+    const toggle = document.getElementById('docSidebarToggle');
+    const sidebar = document.getElementById('docSidebar');
+    if (!toggle || !sidebar) return;
+
+    toggle.addEventListener('click', function () {
+      sidebar.classList.toggle('open');
+    });
+
+    // 点击侧边栏内链接后自动收起（移动端体验）
+    sidebar.querySelectorAll('.doc-nav-link').forEach(function (link) {
+      link.addEventListener('click', function () {
+        if (window.matchMedia('(max-width: 1024px)').matches) {
+          sidebar.classList.remove('open');
+        }
+      });
+    });
+  })();
+
+  // 代码块复制
+  document.querySelectorAll('.doc-code-copy').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      const block = btn.closest('.doc-code-block');
+      if (!block) return;
+      const codeEl = block.querySelector('pre code') || block.querySelector('pre');
+      if (!codeEl) return;
+      const text = codeEl.innerText;
+
+      const done = function () {
+        const original = btn.textContent;
+        btn.textContent = 'copied';
+        btn.style.color = 'var(--green)';
+        btn.style.borderColor = 'var(--green)';
+        setTimeout(function () {
+          btn.textContent = original;
+          btn.style.color = '';
+          btn.style.borderColor = '';
+        }, 1500);
+      };
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done).catch(function () {
+          fallbackCopy(text, done);
+        });
+      } else {
+        fallbackCopy(text, done);
+      }
+    });
+  });
+
+  function fallbackCopy(text, cb) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(ta);
+    if (cb) cb();
+  }
+</script>
+
+</body>
+</html>

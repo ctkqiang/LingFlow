@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LingFlow — 环境配置详解</title>
+<meta name="description" content="LingFlow 环境变量配置详解：核心服务、AWS 凭证、Bedrock 模型、S3 技能存储、安全、心跳、技能创建与可选配置。" />
+
+<link rel="stylesheet" href="https://unpkg.com/@arco-design/web-react@2.56.0/dist/arco.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="docs.css" />
+</head>
+<body>
+
+<button class="doc-mobile-toggle" id="docSidebarToggle" aria-label="切换导航">
+  <span style="color: var(--accent); font-family: var(--font-mono);">≡</span>
+</button>
+
+<div class="doc-layout">
+
+  <aside class="doc-sidebar" id="docSidebar">
+    <div class="doc-sidebar-logo">
+      <img src="images/logo.svg" alt="LingFlow Logo" />
+      <span>LingFlow</span>
+    </div>
+
+    <div class="doc-nav-section">
+      <div class="doc-nav-title">入门指南</div>
+      <a class="doc-nav-link" href="getting-started.html">快速开始</a>
+      <a class="doc-nav-link active" href="configuration.html">环境配置</a>
+    </div>
+
+    <div class="doc-nav-section">
+      <div class="doc-nav-title">核心功能</div>
+      <a class="doc-nav-link" href="websocket-protocol.html">WebSocket 协议</a>
+      <a class="doc-nav-link" href="skills.html">技能系统</a>
+      <a class="doc-nav-link" href="architecture.html">系统架构</a>
+    </div>
+
+    <div class="doc-nav-section">
+      <div class="doc-nav-title">参考文档</div>
+      <a class="doc-nav-link" href="deployment.html">部署指南</a>
+      <a class="doc-nav-link" href="security.html">认证与安全</a>
+      <a class="doc-nav-link" href="index.html">返回首页</a>
+    </div>
+  </aside>
+
+  <main class="doc-main">
+
+    <header class="doc-header">
+      <div class="doc-breadcrumb">
+        <a href="index.html">首页</a> / <a href="getting-started.html">入门指南</a> / 环境配置
+      </div>
+      <h1 class="doc-title">环境配置详解</h1>
+      <p class="doc-desc">
+        LingFlow 通过环境变量与 <code>.env</code> 文件完成全部配置。本页覆盖核心服务、AWS 凭证、Bedrock 模型、
+        S3 技能存储、安全、心跳与可选配置项，每一项均标注默认值与是否必填，便于在生产与开发环境之间快速迁移。
+      </p>
+    </header>
+
+    <section class="doc-section" id="core">
+      <h2 class="doc-section-title">核心服务配置</h2>
+      <p class="doc-p">
+        控制服务运行模式、监听端口、日志级别与 LLM 模拟开关。这些变量在开发与生产环境之间存在差异，
+        建议通过 <code>.env</code> 文件统一管理。
+      </p>
+
+      <table class="doc-table">
+        <thead>
+          <tr>
+            <th>变量</th>
+            <th>说明</th>
+            <th>默认值</th>
+            <th>必填</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>MODE</td>
+            <td>运行模式：development 或 production</td>
+            <td>development</td>
+            <td>否</td>
+          </tr>
+          <tr>
+            <td>WSS_ADDR</td>
+            <td>WebSocket 监听地址</td>
+            <td>:4030</td>
+            <td>否</td>
+          </tr>
+          <tr>
+            <td>LOG_LEVEL</td>
+            <td>日志级别：DEBUG, INFO, WARN, ERROR, VERBOSE</td>
+            <td>INFO</td>
+            <td>否</td>
+          </tr>
+          <tr>
+            <td>LLM_MOCK_MODE</td>
+            <td>设为 true 使用模拟 LLM 响应（开发测试用）</td>
+            <td>false</td>
+            <td>否</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="doc-section" id="aws-credentials">
+      <h2 class="doc-section-title">AWS 凭证配置</h2>
+      <p class="doc-p">
+        LingFlow 通过 AWS SDK 访问 Bedrock 与 S3 服务，需配置 IAM 用户凭证与默认区域。
+      </p>
+
+      <table class="doc-table">
+        <thead>
+          <tr>
+            <th>变量</th>
+            <th>说明</th>
+            <th>必填</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>AWS_ACCESS_KEY_ID</td>
+            <td>IAM 用户访问密钥 ID</td>
+            <td>是</td>
+          </tr>
+          <tr>
+            <td>AWS_SECRET_ACCESS_KEY</td>
+            <td>IAM 用户秘密访问密钥</td>
+            <td>是</td>
+          </tr>
+          <tr>
+            <td>AWS_REGION</td>
+            <td>默认 AWS 区域（用于 S3 等服务）</td>
+            <td>是</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="doc-note">
+        <strong>提示：</strong>LingFlow 使用 AWS SDK 默认凭证链，也支持 IAM 角色、共享凭证文件等方式。
+        在生产环境中，推荐使用 EC2 IAM Role 或 Lambda Execution Role，避免在配置文件中硬编码密钥。
+      </div>
+    </section>
+
+    <section class="doc-section" id="bedrock">
+      <h2 class="doc-section-title">AWS Bedrock 配置</h2>
+      <p class="doc-p">
+        Bedrock 是 LingFlow 调用大语言模型的核心通道。区域需与模型可用区域匹配，模型 ID 决定推理能力。
+      </p>
+
+      <table class="doc-table">
+        <thead>
+          <tr>
+            <th>变量</th>
+            <th>说明</th>
+            <th>默认值</th>
+            <th>必填</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>AWS_BEDROCK_REGION</td>
+            <td>Bedrock 服务所在区域</td>
+            <td>ap-east-1</td>
+            <td>是</td>
+          </tr>
+          <tr>
+            <td>AWS_BEDROCK_MODEL_ID</td>
+            <td>Bedrock 模型标识符</td>
+            <td>anthropic.claude-3-5-sonnet-20241022-v2:0</td>
+            <td>是</td>
+          </tr>
+          <tr>
+            <td>AWS_BEDROCK_MAX_TOKENS</td>
+            <td>响应最大 token 数</td>
+            <td>2048</td>
+            <td>否</td>
+          </tr>
+          <tr>
+            <td>AWS_BEDROCK_TEMPERATURE</td>
+            <td>采样温度 (0.0-1.0)</td>
+            <td>0.7</td>
+            <td>否</td>
+          </tr>
+          <tr>
+            <td>AWS_BEDROCK_TOP_P</td>
+            <td>Top-p 核采样 (0.0-1.0)</td>
+            <td>0.9</td>
+            <td>否</td>
+          </tr>
+          <tr>
+            <td>AWS_BEDROCK_TIMEOUT</td>
+            <td>单次请求超时时长</td>
+            <td>60s</td>
+            <td>否</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3 class="doc-subsection-title">常用 Bedrock 模型 ID</h3>
+      <p class="doc-p">
+        不同模型对应的可用区域不同，切换模型时需同步调整 <code>AWS_BEDROCK_REGION</code>。
+      </p>
+
+      <table class="doc-table">
+        <thead>
+          <tr>
+            <th>模型名称</th>
+            <th>模型 ID</th>
+            <th>可用区域</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Amazon Nova Lite</td>
+            <td>amazon.nova-lite-v1:0</td>
+            <td>us-east-1</td>
+          </tr>
+          <tr>
+            <td>Amazon Nova Pro</td>
+            <td>amazon.nova-pro-v1:0</td>
+            <td>us-east-1</td>
+          </tr>
+          <tr>
+            <td>Claude 3.5 Sonnet</td>
+            <td>anthropic.claude-3-5-sonnet-20241022-v2:0</td>
+            <td>us-east-1</td>
+          </tr>
+          <tr>
+            <td>Claude 3 Haiku</td>
+            <td>anthropic.claude-3-haiku-20240307-v1:0</td>
+            <td>us-east-1</td>
+          </tr>
+          <tr>
+            <td>Llama 3.1 70B</td>
+            <td>meta.llama3-1-70b-instruct-v1:0</td>
+            <td>us-east-1</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="doc-section" id="s3-skills">
+      <h2 class="doc-section-title">S3 技能存储配置</h2>
+      <p class="doc-p">
+        技能文件以 Markdown 形式存储在 S3 桶中，LingFlow 启动时拉取并周期性校验。
+        <code>SKILLS_S3_BUCKET</code> 为优先读取项，<code>AWS_SKILLS_S3_BUCKET</code> 为兼容备用项。
+      </p>
+
+      <table class="doc-table">
+        <thead>
+          <tr>
+            <th>变量</th>
+            <th>说明</th>
+            <th>默认值</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>SKILLS_S3_BUCKET</td>
+            <td>技能文件存储桶名称（优先读取）</td>
+            <td>—</td>
+          </tr>
+          <tr>
+            <td>AWS_SKILLS_S3_BUCKET</td>
+            <td>技能文件存储桶名称（备用变量，支持 ARN 格式）</td>
+            <td>—</td>
+          </tr>
+          <tr>
+            <td>SKILLS_S3_PREFIX</td>
+            <td>S3 中技能文件的前缀路径</td>
+            <td>skills/</td>
+          </tr>
+          <tr>
+            <td>S3_REGION</td>
+            <td>S3 存储桶所在区域（独立于 AWS_REGION）</td>
+            <td>继承 AWS_REGION</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="doc-warn">
+        <strong>注意：</strong>SKILLS_S3_BUCKET 和 AWS_SKILLS_S3_BUCKET 任意配置一个即可。
+        如果填写的是 ARN 格式（如 <code>arn:aws:s3:::my-bucket</code>），系统会自动提取 bucket 名称。
+      </div>
+    </section>
+
+    <section class="doc-section" id="security">
+      <h2 class="doc-section-title">安全配置</h2>
+      <p class="doc-p">
+        生产环境必须启用 TLS、Token 签名、Origin 白名单与 IP 限流。<code>WSS_ALLOW_ALL_ORIGINS</code>
+        仅用于本地调试，上线前务必关闭。
+      </p>
+
+      <table class="doc-table">
+        <thead>
+          <tr>
+            <th>变量</th>
+            <th>说明</th>
+            <th>默认值</th>
+            <th>生产必填</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>WSS_CERT_FILE</td>
+            <td>TLS 证书文件路径</td>
+            <td>—</td>
+            <td>是</td>
+          </tr>
+          <tr>
+            <td>WSS_KEY_FILE</td>
+            <td>TLS 私钥文件路径</td>
+            <td>—</td>
+            <td>是</td>
+          </tr>
+          <tr>
+            <td>WSS_AUTH_SECRET</td>
+            <td>HMAC Token 签名密钥</td>
+            <td>—</td>
+            <td>是</td>
+          </tr>
+          <tr>
+            <td>AUTH_API_KEY</td>
+            <td>REST 认证接口的 API Key</td>
+            <td>—</td>
+            <td>是</td>
+          </tr>
+          <tr>
+            <td>AUTH_TOKEN_TTL</td>
+            <td>Token 有效期</td>
+            <td>24h</td>
+            <td>否</td>
+          </tr>
+          <tr>
+            <td>WSS_ALLOWED_ORIGINS</td>
+            <td>允许的 Origin 列表（逗号分隔）</td>
+            <td>—</td>
+            <td>是</td>
+          </tr>
+          <tr>
+            <td>WSS_MAX_CONNECTIONS_PER_IP</td>
+            <td>单 IP 最大连接数</td>
+            <td>10</td>
+            <td>否</td>
+          </tr>
+          <tr>
+            <td>WSS_ALLOW_ALL_ORIGINS</td>
+            <td>允许所有 Origin（仅调试用）</td>
+            <td>false</td>
+            <td>—</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="doc-section" id="heartbeat">
+      <h2 class="doc-section-title">心跳配置</h2>
+      <p class="doc-p">
+        心跳机制用于检测连接活性，超时未活动的连接将被自动断开，避免资源泄漏。
+      </p>
+
+      <table class="doc-table">
+        <thead>
+          <tr>
+            <th>变量</th>
+            <th>说明</th>
+            <th>默认值</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>WSS_HEARTBEAT_INTERVAL</td>
+            <td>服务端 Ping 发送间隔</td>
+            <td>30s</td>
+          </tr>
+          <tr>
+            <td>WSS_HEARTBEAT_TIMEOUT</td>
+            <td>连接空闲超时（无活动则断开）</td>
+            <td>90s</td>
+          </tr>
+          <tr>
+            <td>WSS_HEARTBEAT_WRITE_TIMEOUT</td>
+            <td>写入操作超时</td>
+            <td>10s</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="doc-section" id="skill-creation">
+      <h2 class="doc-section-title">技能创建配置</h2>
+      <p class="doc-p">
+        控制是否允许通过 <code>#create_skill</code> 命令动态生成技能，以及是否启用 Bedrock Guardrail 提示注入防护。
+      </p>
+
+      <table class="doc-table">
+        <thead>
+          <tr>
+            <th>变量</th>
+            <th>说明</th>
+            <th>默认值</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>IS_ALLOW_USER_CREATE_SKILL</td>
+            <td>是否允许通过 #create_skill 创建技能</td>
+            <td>false</td>
+          </tr>
+          <tr>
+            <td>ENABLE_BEDROCK_GUARDRAIL</td>
+            <td>是否启用 Bedrock Guardrail 提示注入防护</td>
+            <td>false</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="doc-section" id="optional">
+      <h2 class="doc-section-title">可选配置</h2>
+      <p class="doc-p">
+        支持从 AWS Secrets Manager 拉取密钥，或从 S3 加载 <code>.env</code> 文件，便于在 Serverless 环境中集中管理配置。
+      </p>
+
+      <table class="doc-table">
+        <thead>
+          <tr>
+            <th>变量</th>
+            <th>说明</th>
+            <th>默认值</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>SECRET_ARN</td>
+            <td>AWS Secrets Manager 密钥 ARN</td>
+            <td>—</td>
+          </tr>
+          <tr>
+            <td>SECRET_NAME</td>
+            <td>AWS Secrets Manager 密钥名称</td>
+            <td>—</td>
+          </tr>
+          <tr>
+            <td>S3_ENV_BUCKET</td>
+            <td>存储 .env 文件的 S3 桶</td>
+            <td>—</td>
+          </tr>
+          <tr>
+            <td>S3_ENV_KEY</td>
+            <td>.env 在 S3 中的键名</td>
+            <td>.env</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="doc-section" id="env-example">
+      <h2 class="doc-section-title">.env 完整示例</h2>
+      <p class="doc-p">
+        以下是一份覆盖核心场景的 <code>.env</code> 模板，复制后按需替换密钥与桶名即可使用。
+      </p>
+
+      <div class="doc-code-block">
+        <div class="doc-code-header">
+          <span class="doc-code-lang">bash</span>
+          <button class="doc-code-copy" type="button" data-copy-target="env-example-code">复制</button>
+        </div>
+        <div class="doc-code-body">
+<pre id="env-example-code"><code><span class="com"># 核心配置</span>
+<span class="typ">MODE</span>=<span class="str">development</span>
+<span class="typ">WSS_ADDR</span>=<span class="str">:4030</span>
+<span class="typ">LOG_LEVEL</span>=<span class="str">INFO</span>
+<span class="typ">LLM_MOCK_MODE</span>=<span class="str">true</span>
+
+<span class="com"># AWS 凭证</span>
+<span class="typ">AWS_ACCESS_KEY_ID</span>=<span class="str">AKIAxxxxxxxxxxxx</span>
+<span class="typ">AWS_SECRET_ACCESS_KEY</span>=<span class="str">xxxxxxxxxxxxxxxxxxxxxxxx</span>
+<span class="typ">AWS_REGION</span>=<span class="str">ap-southeast-5</span>
+
+<span class="com"># S3 技能存储</span>
+<span class="typ">SKILLS_S3_BUCKET</span>=<span class="str">skill-bucket-bedrock</span>
+<span class="typ">SKILLS_S3_PREFIX</span>=<span class="str">skills/</span>
+<span class="typ">S3_REGION</span>=<span class="str">ap-southeast-5</span>
+
+<span class="com"># Bedrock 配置</span>
+<span class="typ">AWS_BEDROCK_REGION</span>=<span class="str">us-east-1</span>
+<span class="typ">AWS_BEDROCK_MODEL_ID</span>=<span class="str">amazon.nova-lite-v1:0</span>
+<span class="typ">AWS_BEDROCK_MAX_TOKENS</span>=<span class="num">2048</span>
+<span class="typ">AWS_BEDROCK_TEMPERATURE</span>=<span class="num">0.7</span>
+<span class="typ">AWS_BEDROCK_TOP_P</span>=<span class="num">0.9</span>
+<span class="typ">AWS_BEDROCK_TIMEOUT</span>=<span class="str">60s</span>
+
+<span class="com"># 技能创建</span>
+<span class="typ">IS_ALLOW_USER_CREATE_SKILL</span>=<span class="str">true</span>
+<span class="typ">ENABLE_BEDROCK_GUARDRAIL</span>=<span class="str">false</span></code></pre>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+  // 移动端侧边栏切换
+  (function () {
+    var toggle = document.getElementById('docSidebarToggle');
+    var sidebar = document.getElementById('docSidebar');
+    if (!toggle || !sidebar) return;
+
+    toggle.addEventListener('click', function () {
+      sidebar.classList.toggle('open');
+    });
+
+    // 点击导航链接后自动收起侧边栏（移动端体验）
+    sidebar.querySelectorAll('.doc-nav-link').forEach(function (link) {
+      link.addEventListener('click', function () {
+        if (window.matchMedia('(max-width: 1024px)').matches) {
+          sidebar.classList.remove('open');
+        }
+      });
+    });
+  })();
+
+  // 代码块复制
+  (function () {
+    document.querySelectorAll('.doc-code-copy').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var targetId = btn.getAttribute('data-copy-target');
+        var target = targetId ? document.getElementById(targetId) : null;
+        if (!target) return;
+        var text = target.innerText;
+
+        var done = function () {
+          var prev = btn.textContent;
+          btn.textContent = '已复制';
+          setTimeout(function () { btn.textContent = prev; }, 1500);
+        };
+
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done).catch(function () {
+            fallbackCopy(text); done();
+          });
+        } else {
+          fallbackCopy(text); done();
+        }
+      });
+    });
+
+    function fallbackCopy(text) {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); } catch (e) {}
+      document.body.removeChild(ta);
+    }
+  })();
+</script>
+
+</body>
+</html>

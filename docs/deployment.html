@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>部署指南 — LingFlow 文档</title>
+<meta name="description" content="LingFlow 本地、Docker、Kubernetes 与 AWS Lambda 部署指南，包含 k8s 配置、健康检查、滚动更新与 AWS 基础设施准备" />
+
+<link rel="stylesheet" href="https://unpkg.com/@arco-design/web-react@2.56.0/dist/arco.css" />
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap" rel="stylesheet" />
+
+<link rel="stylesheet" href="docs.css" />
+</head>
+<body>
+
+<button class="doc-mobile-toggle" id="sidebarToggle" aria-label="切换侧边栏">≡</button>
+
+<div class="doc-layout">
+
+  <aside class="doc-sidebar" id="sidebar">
+    <div class="doc-sidebar-logo">
+      <img src="images/logo.svg" alt="LingFlow Logo" />
+      <span>LingFlow</span>
+    </div>
+
+    <div class="doc-nav-section">
+      <div class="doc-nav-title">入门指南</div>
+      <a class="doc-nav-link" href="getting-started.html">快速开始</a>
+      <a class="doc-nav-link" href="configuration.html">环境配置</a>
+    </div>
+
+    <div class="doc-nav-section">
+      <div class="doc-nav-title">核心功能</div>
+      <a class="doc-nav-link" href="websocket-protocol.html">WebSocket 协议</a>
+      <a class="doc-nav-link" href="skills.html">技能系统</a>
+      <a class="doc-nav-link" href="architecture.html">系统架构</a>
+    </div>
+
+    <div class="doc-nav-section">
+      <div class="doc-nav-title">参考文档</div>
+      <a class="doc-nav-link active" href="deployment.html">部署指南</a>
+      <a class="doc-nav-link" href="security.html">认证与安全</a>
+      <a class="doc-nav-link" href="index.html">返回首页</a>
+    </div>
+  </aside>
+
+  <main class="doc-main">
+
+    <header class="doc-header">
+      <div class="doc-breadcrumb">
+        <a href="index.html">首页</a> / <a href="deployment.html">参考文档</a> / 部署指南
+      </div>
+      <h1 class="doc-title">部署指南</h1>
+      <p class="doc-desc">
+        涵盖本地编译、Docker 容器化、Kubernetes 集群部署以及 AWS Lambda Serverless 部署的完整方案，
+        配合健康检查、滚动更新与 AWS 基础设施准备，确保 LingFlow 在任意环境下稳定运行。
+      </p>
+    </header>
+
+    <section class="doc-section" id="local-deploy">
+      <h2 class="doc-section-title">本地部署</h2>
+      <p class="doc-p">
+        本地部署适用于开发与调试场景，直接通过 Go 工具链编译源码生成二进制后运行。
+      </p>
+      <div class="doc-code-block">
+        <div class="doc-code-header">
+          <span class="doc-code-lang">bash</span>
+          <button class="doc-code-copy" type="button">copy</button>
+        </div>
+        <div class="doc-code-body">
+<pre><code>go build -o lingflow main.go
+./lingflow</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="doc-section" id="docker-deploy">
+      <h2 class="doc-section-title">Docker 部署</h2>
+      <p class="doc-p">
+        通过容器化部署可实现环境隔离与一致交付，建议使用 <code>--env-file</code> 注入环境变量以避免敏感信息写入镜像。
+      </p>
+      <div class="doc-code-block">
+        <div class="doc-code-header">
+          <span class="doc-code-lang">bash</span>
+          <button class="doc-code-copy" type="button">copy</button>
+        </div>
+        <div class="doc-code-body">
+<pre><code>docker build -t lingflow .
+docker run -p 4030:4030 --env-file .env lingflow</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="doc-section" id="k8s-deploy">
+      <h2 class="doc-section-title">Kubernetes 部署</h2>
+      <p class="doc-p">
+        项目提供了完整的 Kubernetes 部署配置文件，位于 <code>k8s/</code> 目录。
+      </p>
+
+      <h3 class="doc-subsection-title">配置文件结构</h3>
+      <div class="doc-code-block">
+        <div class="doc-code-header">
+          <span class="doc-code-lang">text</span>
+          <button class="doc-code-copy" type="button">copy</button>
+        </div>
+        <div class="doc-code-body">
+<pre><code>k8s/
+├── deployment.yaml    # 应用部署配置（3副本、滚动更新、健康检查）
+├── service.yaml       # ClusterIP 服务暴露
+├── ingress.yaml       # Nginx Ingress 网关（支持 WebSocket + TLS）
+├── configmap.yaml     # 非敏感环境变量配置
+└── secret.yaml        # 敏感配置项（需手动填写 base64 编码值）</code></pre>
+        </div>
+      </div>
+
+      <h3 class="doc-subsection-title">部署步骤</h3>
+      <p class="doc-p">
+        按照以下顺序依次应用配置文件，确保依赖资源（ConfigMap、Secret）先于工作负载创建。
+      </p>
+      <div class="doc-code-block">
+        <div class="doc-code-header">
+          <span class="doc-code-lang">bash</span>
+          <button class="doc-code-copy" type="button">copy</button>
+        </div>
+        <div class="doc-code-body">
+<pre><code># 1. 创建命名空间（可选）
+kubectl create namespace lingflow
+
+# 2. 创建 ConfigMap
+kubectl apply -f k8s/configmap.yaml
+
+# 3. 创建 Secret（需先填写敏感值）
+kubectl apply -f k8s/secret.yaml
+
+# 4. 创建 Service
+kubectl apply -f k8s/service.yaml
+
+# 5. 创建 Deployment
+kubectl apply -f k8s/deployment.yaml
+
+# 6. 创建 Ingress（可选）
+kubectl apply -f k8s/ingress.yaml</code></pre>
+        </div>
+      </div>
+
+      <h3 class="doc-subsection-title">ConfigMap 配置说明</h3>
+      <p class="doc-p">
+        ConfigMap 用于存储非敏感的环境变量，所有 Pod 共享同一份配置。
+      </p>
+      <table class="doc-table">
+        <thead>
+          <tr>
+            <th>配置项</th>
+            <th>说明</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>AWS_REGION</td>
+            <td>S3 所在区域</td>
+          </tr>
+          <tr>
+            <td>AWS_BEDROCK_REGION</td>
+            <td>Bedrock 服务区域</td>
+          </tr>
+          <tr>
+            <td>AWS_BEDROCK_MODEL_ID</td>
+            <td>模型标识符</td>
+          </tr>
+          <tr>
+            <td>SKILLS_S3_BUCKET</td>
+            <td>技能存储桶名称</td>
+          </tr>
+          <tr>
+            <td>WSS_HEARTBEAT_INTERVAL</td>
+            <td>心跳间隔</td>
+          </tr>
+          <tr>
+            <td>IS_ALLOW_USER_CREATE_SKILL</td>
+            <td>是否允许技能创建</td>
+          </tr>
+          <tr>
+            <td>ENABLE_BEDROCK_GUARDRAIL</td>
+            <td>是否启用 Guardrail</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3 class="doc-subsection-title">Secret 配置</h3>
+      <p class="doc-p">
+        敏感配置需要 base64 编码后填入 <code>k8s/secret.yaml</code>，切勿以明文形式提交到版本控制。
+      </p>
+      <div class="doc-code-block">
+        <div class="doc-code-header">
+          <span class="doc-code-lang">bash</span>
+          <button class="doc-code-copy" type="button">copy</button>
+        </div>
+        <div class="doc-code-body">
+<pre><code># 生成 base64 编码值
+echo -n "your-access-key" | base64
+echo -n "your-secret-key" | base64
+echo -n "your-auth-secret" | base64
+echo -n "your-api-key" | base64</code></pre>
+        </div>
+      </div>
+
+      <h3 class="doc-subsection-title">健康检查</h3>
+      <p class="doc-p">
+        部署配置包含 liveness 和 readiness 探针，kubelet 会周期性探测以决定流量转发与实例重启。
+      </p>
+      <div class="doc-code-block">
+        <div class="doc-code-header">
+          <span class="doc-code-lang">yaml</span>
+          <button class="doc-code-copy" type="button">copy</button>
+        </div>
+        <div class="doc-code-body">
+<pre><code>livenessProbe:
+  httpGet:
+    path: /health
+    port: 4030
+  initialDelaySeconds: 10
+  periodSeconds: 30
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /ready
+    port: 4030
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3</code></pre>
+        </div>
+      </div>
+
+      <h3 class="doc-subsection-title">资源限制</h3>
+      <p class="doc-p">
+        通过 requests 与 limits 限制单个 Pod 的资源用量，避免单实例异常耗尽节点资源。
+      </p>
+      <div class="doc-code-block">
+        <div class="doc-code-header">
+          <span class="doc-code-lang">yaml</span>
+          <button class="doc-code-copy" type="button">copy</button>
+        </div>
+        <div class="doc-code-body">
+<pre><code>resources:
+  requests:
+    memory: "256Mi"
+    cpu: "250m"
+  limits:
+    memory: "512Mi"
+    cpu: "500m"</code></pre>
+        </div>
+      </div>
+
+      <h3 class="doc-subsection-title">安全上下文</h3>
+      <p class="doc-p">
+        通过 Pod Security Context 收紧容器权限，遵循最小权限原则。
+      </p>
+      <div class="doc-code-block">
+        <div class="doc-code-header">
+          <span class="doc-code-lang">yaml</span>
+          <button class="doc-code-copy" type="button">copy</button>
+        </div>
+        <div class="doc-code-body">
+<pre><code>securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL</code></pre>
+        </div>
+      </div>
+
+      <h3 class="doc-subsection-title">水平扩展</h3>
+      <p class="doc-p">
+        可通过手动修改副本数或启用 HPA（Horizontal Pod Autoscaler）基于 CPU 利用率自动扩缩容。
+      </p>
+      <div class="doc-code-block">
+        <div class="doc-code-header">
+          <span class="doc-code-lang">bash</span>
+          <button class="doc-code-copy" type="button">copy</button>
+        </div>
+        <div class="doc-code-body">
+<pre><code># 修改副本数
+kubectl scale deployment lingflow --replicas=5
+
+# 或使用 HPA 自动扩缩容
+kubectl autoscale deployment lingflow --min=3 --max=10 --cpu-percent=70</code></pre>
+        </div>
+      </div>
+
+      <h3 class="doc-subsection-title">滚动更新</h3>
+      <p class="doc-p">
+        配置已启用 RollingUpdate 策略，maxSurge=1, maxUnavailable=0，确保零停机更新。
+      </p>
+      <div class="doc-code-block">
+        <div class="doc-code-header">
+          <span class="doc-code-lang">bash</span>
+          <button class="doc-code-copy" type="button">copy</button>
+        </div>
+        <div class="doc-code-body">
+<pre><code># 更新镜像触发滚动更新
+kubectl set image deployment/lingflow lingflow=lingflow:v2.0.0
+
+# 查看滚动更新状态
+kubectl rollout status deployment/lingflow
+
+# 回滚到上一个版本
+kubectl rollout undo deployment/lingflow</code></pre>
+        </div>
+      </div>
+
+      <h3 class="doc-subsection-title">Ingress 配置（WebSocket 支持）</h3>
+      <p class="doc-p">
+        Nginx Ingress 需要特殊配置以支持 WebSocket 长连接，需延长代理超时并指定后端 Service。
+      </p>
+      <div class="doc-code-block">
+        <div class="doc-code-header">
+          <span class="doc-code-lang">yaml</span>
+          <button class="doc-code-copy" type="button">copy</button>
+        </div>
+        <div class="doc-code-body">
+<pre><code>annotations:
+  nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+  nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+  nginx.ingress.kubernetes.io/websocket-services: "lingflow-service"
+  nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  cert-manager.io/cluster-issuer: "letsencrypt-prod"</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="doc-section" id="lambda-deploy">
+      <h2 class="doc-section-title">AWS Lambda + API Gateway 部署</h2>
+      <p class="doc-p">
+        参考 <code>internal/services/aws/lambda.go</code> 实现 Serverless 部署。适用于低频调用场景，按需付费。
+      </p>
+      <ul class="doc-ul">
+        <li>零运维成本，无需管理服务器</li>
+        <li>自动弹性伸缩</li>
+        <li>API Gateway WebSocket 集成</li>
+        <li>按调用次数计费</li>
+      </ul>
+    </section>
+
+    <section class="doc-section" id="aws-infra">
+      <h2 class="doc-section-title">AWS 基础设施准备</h2>
+
+      <h3 class="doc-subsection-title">创建 S3 存储桶</h3>
+      <p class="doc-p">
+        LingFlow 将技能文件以 Markdown 形式持久化到 S3，需提前创建存储桶并选择与 Bedrock 接近的区域。
+      </p>
+      <div class="doc-code-block">
+        <div class="doc-code-header">
+          <span class="doc-code-lang">bash</span>
+          <button class="doc-code-copy" type="button">copy</button>
+        </div>
+        <div class="doc-code-body">
+<pre><code>aws s3api create-bucket \
+  --bucket skill-bucket-bedrock \
+  --region ap-southeast-5 \
+  --create-bucket-configuration LocationConstraint=ap-southeast-5</code></pre>
+        </div>
+      </div>
+
+      <h3 class="doc-subsection-title">创建 IAM 用户和策略</h3>
+      <p class="doc-p">
+        需要为 LingFlow 创建具有 S3 和 Bedrock 权限的 IAM 用户，遵循最小权限原则，仅授予必要的操作。
+      </p>
+
+      <p class="doc-p"><strong>S3 权限策略：</strong></p>
+      <div class="doc-code-block">
+        <div class="doc-code-header">
+          <span class="doc-code-lang">json</span>
+          <button class="doc-code-copy" type="button">copy</button>
+        </div>
+        <div class="doc-code-body">
+<pre><code>{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:ListBucket",
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:HeadObject",
+        "s3:DeleteObject"
+      ],
+      "Resource": [
+        "arn:aws:s3:::skill-bucket-bedrock",
+        "arn:aws:s3:::skill-bucket-bedrock/*"
+      ]
+    }
+  ]
+}</code></pre>
+        </div>
+      </div>
+
+      <p class="doc-p">S3 权限说明：</p>
+      <table class="doc-table">
+        <thead>
+          <tr>
+            <th>Action</th>
+            <th>用途</th>
+            <th>对应代码</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>s3:ListBucket</td>
+            <td>列出存储桶中的技能文件</td>
+            <td>LoadAllSkills</td>
+          </tr>
+          <tr>
+            <td>s3:GetObject</td>
+            <td>下载技能 Markdown 内容</td>
+            <td>LoadSkill</td>
+          </tr>
+          <tr>
+            <td>s3:HeadObject</td>
+            <td>检查技能是否已存在</td>
+            <td>SkillExists</td>
+          </tr>
+          <tr>
+            <td>s3:PutObject</td>
+            <td>上传新技能或占位文件</td>
+            <td>UploadSkill</td>
+          </tr>
+          <tr>
+            <td>s3:DeleteObject</td>
+            <td>删除技能文件（创建失败时清理）</td>
+            <td>DeleteSkill</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p class="doc-p"><strong>Bedrock 权限策略：</strong></p>
+      <div class="doc-code-block">
+        <div class="doc-code-header">
+          <span class="doc-code-lang">json</span>
+          <button class="doc-code-copy" type="button">copy</button>
+        </div>
+        <div class="doc-code-body">
+<pre><code>{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:InvokeModel",
+        "bedrock:Converse",
+        "bedrock:ConverseStream"
+      ],
+      "Resource": "*"
+    }
+  ]
+}</code></pre>
+        </div>
+      </div>
+
+      <div class="doc-warn">
+        <strong>注意：</strong>Resource 需要两条记录 - 存储桶本身（用于 ListBucket）和存储桶内对象（用于对象级操作）。
+      </div>
+
+      <h3 class="doc-subsection-title">验证 AWS 配置</h3>
+      <p class="doc-p">
+        完成 IAM 配置后，建议先通过 AWS CLI 验证 S3 与 Bedrock 访问权限是否生效，再启动服务。
+      </p>
+      <div class="doc-code-block">
+        <div class="doc-code-header">
+          <span class="doc-code-lang">bash</span>
+          <button class="doc-code-copy" type="button">copy</button>
+        </div>
+        <div class="doc-code-body">
+<pre><code># 验证 S3 访问
+aws s3 ls s3://skill-bucket-bedrock/skills/
+
+# 验证 Bedrock 访问
+aws bedrock list-foundation-models --region us-east-1</code></pre>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+  // 移动端侧边栏切换
+  (function () {
+    var toggle = document.getElementById('sidebarToggle');
+    var sidebar = document.getElementById('sidebar');
+    if (!toggle || !sidebar) return;
+
+    function closeSidebar() {
+      sidebar.classList.remove('open');
+    }
+
+    toggle.addEventListener('click', function () {
+      sidebar.classList.toggle('open');
+    });
+
+    // 点击侧边栏内链接后自动收起（移动端体验）
+    sidebar.querySelectorAll('a.doc-nav-link').forEach(function (link) {
+      link.addEventListener('click', function () {
+        if (window.innerWidth <= 1024) {
+          closeSidebar();
+        }
+      });
+    });
+
+    // 点击主内容区关闭侧边栏
+    document.querySelector('.doc-main').addEventListener('click', function () {
+      if (window.innerWidth <= 1024 && sidebar.classList.contains('open')) {
+        closeSidebar();
+      }
+    });
+
+    // 窗口尺寸变化时重置状态
+    window.addEventListener('resize', function () {
+      if (window.innerWidth > 1024) {
+        closeSidebar();
+      }
+    });
+  })();
+
+  // 代码块复制功能
+  document.querySelectorAll('.doc-code-copy').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var block = btn.closest('.doc-code-block');
+      if (!block) return;
+      var codeEl = block.querySelector('code');
+      if (!codeEl) return;
+      var text = codeEl.innerText;
+
+      var done = function () {
+        var original = btn.textContent;
+        btn.textContent = 'copied';
+        btn.style.color = '#4ade80';
+        btn.style.borderColor = '#4ade80';
+        setTimeout(function () {
+          btn.textContent = original;
+          btn.style.color = '';
+          btn.style.borderColor = '';
+        }, 1500);
+      };
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done).catch(function () {
+          fallbackCopy(text);
+          done();
+        });
+      } else {
+        fallbackCopy(text);
+        done();
+      }
+    });
+  });
+
+  function fallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(ta);
+  }
+</script>
+
+</body>
+</html>
