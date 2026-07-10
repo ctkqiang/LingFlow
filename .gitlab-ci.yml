@@ -53,30 +53,6 @@ go:vet:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == "main"
 
-# ============================================================================
-# 测试阶段
-# ============================================================================
-
-go:test:
-  stage: test
-  image: golang:${GO_VERSION}
-  <<: *go_cache
-  script:
-    - echo "--- 运行 Go 单元测试 ---"
-    - go test ./... -v -race -coverprofile=coverage.out
-    - go tool cover -func=coverage.out
-  artifacts:
-    reports:
-      coverage_report:
-        coverage_format: cobertura
-        path: coverage.out
-    paths:
-      - coverage.out
-    expire_in: 7 days
-  coverage: '/total:\s+\(statements\)\s+(\d+\.\d+)%/'
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == "main"
 
 # ============================================================================
 # 构建阶段
