@@ -228,35 +228,4 @@ jobs:
         with:
           category: '/language:${{matrix.language}}'
 
-  # ============================================================================
-  # 部署阶段（仅 main 分支，手动触发）
-  # ============================================================================
-  deploy-lambda:
-    name: 部署到 AWS Lambda
-    runs-on: ubuntu-latest
-    needs: [go-build-lambda, codeql-analysis]
-    if: github.ref == 'refs/heads/main'
-    environment:
-      name: production
-      url: https://console.aws.amazon.com/lambda
-    steps:
-      - name: 下载 Lambda 部署包
-        uses: actions/download-artifact@v4
-        with:
-          name: lambda-package
-          path: build/
 
-      - name: 配置 AWS 凭证
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
-
-      - name: 部署 Lambda 函数
-        run: |
-          aws lambda update-function-code \
-            --function-name LingFlow \
-            --zip-file fileb://build/lambda.zip \
-            --region ${{ secrets.AWS_REGION }}
-          echo "--- 部署完成 ---"
