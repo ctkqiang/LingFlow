@@ -62,9 +62,9 @@ func (executor *SkillExecutor) SetSystemPrompt(prompt string) {
 
 // ExecutionResult 保存技能增强 LLM 执行的完整结果。
 type ExecutionResult struct {
-	Response    LLMResponse
-	SkillUsed   *models.SkillMetadata
-	WSMessage   models.WSMessage
+	Response  LLMResponse
+	SkillUsed *models.SkillMetadata
+	WSMessage models.WSMessage
 }
 
 // Execute 通过完整管道处理用户消息：

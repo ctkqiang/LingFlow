@@ -13,23 +13,23 @@ var eventIdentifierSequence uint64
 type EventType string
 
 const (
-	EventTypeChatSessionConnected       EventType = "chat_session_connected"
-	EventTypeChatSessionDisconnected    EventType = "chat_session_disconnected"
+	EventTypeChatSessionConnected        EventType = "chat_session_connected"
+	EventTypeChatSessionDisconnected     EventType = "chat_session_disconnected"
 	EventTypeChatMessageReceived         EventType = "chat_message_received"
 	EventTypeChatMessageProcessed        EventType = "chat_message_processed"
 	EventTypeChatMessageProcessingFailed EventType = "chat_message_processing_failed"
 	EventTypeChatMessageBroadcasted      EventType = "chat_message_broadcasted"
-	EventTypeHeartbeatPingReceived      EventType = "heartbeat_ping_received"
-	EventTypeHeartbeatPongSent          EventType = "heartbeat_pong_sent"
-	EventTypeHeartbeatPingSent          EventType = "heartbeat_ping_sent"
-	EventTypeHeartbeatPongReceived      EventType = "heartbeat_pong_received"
-	EventTypeHeartbeatTimeout           EventType = "heartbeat_timeout"
-	EventTypeSkillExecutionStarted   EventType = "skill_execution_started"
-	EventTypeSkillExecutionCompleted EventType = "skill_execution_completed"
-	EventTypeSkillExecutionFailed    EventType = "skill_execution_failed"
-	EventTypeLLMGenerationStarted    EventType = "llm_generation_started"
-	EventTypeLLMGenerationCompleted  EventType = "llm_generation_completed"
-	EventTypeLLMGenerationFailed     EventType = "llm_generation_failed"
+	EventTypeHeartbeatPingReceived       EventType = "heartbeat_ping_received"
+	EventTypeHeartbeatPongSent           EventType = "heartbeat_pong_sent"
+	EventTypeHeartbeatPingSent           EventType = "heartbeat_ping_sent"
+	EventTypeHeartbeatPongReceived       EventType = "heartbeat_pong_received"
+	EventTypeHeartbeatTimeout            EventType = "heartbeat_timeout"
+	EventTypeSkillExecutionStarted       EventType = "skill_execution_started"
+	EventTypeSkillExecutionCompleted     EventType = "skill_execution_completed"
+	EventTypeSkillExecutionFailed        EventType = "skill_execution_failed"
+	EventTypeLLMGenerationStarted        EventType = "llm_generation_started"
+	EventTypeLLMGenerationCompleted      EventType = "llm_generation_completed"
+	EventTypeLLMGenerationFailed         EventType = "llm_generation_failed"
 )
 
 // DomainEvent 是事件溯源中唯一持久化的事实记录。

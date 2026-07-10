@@ -368,15 +368,15 @@ func runtimeSnapshot() map[string]interface{} {
 	var memoryStats runtime.MemStats
 	runtime.ReadMemStats(&memoryStats)
 	return map[string]interface{}{
-		"goroutine_count":    runtime.NumGoroutine(),
-		"heap_alloc_bytes":   memoryStats.Alloc,
-		"heap_alloc_mb":      float64(memoryStats.Alloc) / 1024 / 1024,
-		"sys_memory_bytes":   memoryStats.Sys,
-		"sys_memory_mb":      float64(memoryStats.Sys) / 1024 / 1024,
-		"num_gc":             memoryStats.NumGC,
-		"cpu_count":          runtime.NumCPU(),
-		"uptime_ns":          time.Since(startTime).Nanoseconds(),
-		"uptime_human":       fmtElapsed(time.Since(startTime)),
+		"goroutine_count":  runtime.NumGoroutine(),
+		"heap_alloc_bytes": memoryStats.Alloc,
+		"heap_alloc_mb":    float64(memoryStats.Alloc) / 1024 / 1024,
+		"sys_memory_bytes": memoryStats.Sys,
+		"sys_memory_mb":    float64(memoryStats.Sys) / 1024 / 1024,
+		"num_gc":           memoryStats.NumGC,
+		"cpu_count":        runtime.NumCPU(),
+		"uptime_ns":        time.Since(startTime).Nanoseconds(),
+		"uptime_human":     fmtElapsed(time.Since(startTime)),
 	}
 }
 
@@ -390,26 +390,26 @@ func LogJSON(component, operation string, level LogLevel, status, message string
 	runtime.ReadMemStats(&memoryStats)
 
 	entry := map[string]interface{}{
-		"timestamp":          now.Format(time.RFC3339Nano),
+		"timestamp":           now.Format(time.RFC3339Nano),
 		"timestamp_unix_nano": now.UnixNano(),
-		"level":              level.String(),
-		"component":          component,
-		"operation":          operation,
-		"status":             status,
-		"message":            message,
-		"elapsed_ns":         elapsed.Nanoseconds(),
-		"elapsed_human":      fmtElapsed(elapsed),
-		"memory_alloc_bytes": memoryStats.Alloc,
-		"memory_alloc_mb":    float64(memoryStats.Alloc) / 1024 / 1024,
-		"goroutine_count":    runtime.NumGoroutine(),
-		"task_id":            nextTaskID(),
-		"caller":             callerName(2),
-		"trace_id":           NewTraceID(),
-		"details":            details,
-		"app":                APP_NAME,
-		"version":            VERSION,
-		"pid":                os.Getpid(),
-		"hostname":           hostname,
+		"level":               level.String(),
+		"component":           component,
+		"operation":           operation,
+		"status":              status,
+		"message":             message,
+		"elapsed_ns":          elapsed.Nanoseconds(),
+		"elapsed_human":       fmtElapsed(elapsed),
+		"memory_alloc_bytes":  memoryStats.Alloc,
+		"memory_alloc_mb":     float64(memoryStats.Alloc) / 1024 / 1024,
+		"goroutine_count":     runtime.NumGoroutine(),
+		"task_id":             nextTaskID(),
+		"caller":              callerName(2),
+		"trace_id":            NewTraceID(),
+		"details":             details,
+		"app":                 APP_NAME,
+		"version":             VERSION,
+		"pid":                 os.Getpid(),
+		"hostname":            hostname,
 	}
 
 	jsonBytes, err := json.Marshal(entry)

@@ -8,12 +8,12 @@ import (
 
 // ChatSessionProjection 是从事件流重放得到的 chat session 当前状态。
 type ChatSessionProjection struct {
-	ConnectionIdentifier string    `json:"connection_identifier"`
-	Connected            bool      `json:"connected"`
-	ReceivedMessageCount int       `json:"received_message_count"`
-	ProcessedMessageCount int      `json:"processed_message_count"`
-	FailedMessageCount    int      `json:"failed_message_count"`
-	BroadcastMessageCount int      `json:"broadcast_message_count"`
+	ConnectionIdentifier  string    `json:"connection_identifier"`
+	Connected             bool      `json:"connected"`
+	ReceivedMessageCount  int       `json:"received_message_count"`
+	ProcessedMessageCount int       `json:"processed_message_count"`
+	FailedMessageCount    int       `json:"failed_message_count"`
+	BroadcastMessageCount int       `json:"broadcast_message_count"`
 	LastEventAt           time.Time `json:"last_event_at"`
 }
 

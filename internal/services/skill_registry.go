@@ -18,11 +18,11 @@ const (
 
 // SkillRegistry 管理所有可用技能的内存索引，并提供技能选择的检索能力。
 type SkillRegistry struct {
-	registryMutex   sync.RWMutex
-	skills          map[string]models.SkillDefinition
-	metadataIndex   []models.SkillMetadata
-	scoreThreshold  float32
-	maxResults      int
+	registryMutex  sync.RWMutex
+	skills         map[string]models.SkillDefinition
+	metadataIndex  []models.SkillMetadata
+	scoreThreshold float32
+	maxResults     int
 }
 
 // NewSkillRegistry 使用默认配置创建一个新的技能注册中心。

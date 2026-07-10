@@ -8,12 +8,12 @@ import (
 type MessageType string
 
 const (
-	UserChat         MessageType = "user_chat"         // 用户发送的普通聊天消息
-	SystemChat       MessageType = "system_chat"       // 系统发送的通知类消息
-	SystemThinking   MessageType = "system_thinking"   // 系统思考过程（技能匹配、推理）
-	SystemResponse   MessageType = "system_response"   // 系统最终响应消息
+	UserChat         MessageType = "user_chat"          // 用户发送的普通聊天消息
+	SystemChat       MessageType = "system_chat"        // 系统发送的通知类消息
+	SystemThinking   MessageType = "system_thinking"    // 系统思考过程（技能匹配、推理）
+	SystemResponse   MessageType = "system_response"    // 系统最终响应消息
 	SystemSkillsList MessageType = "system_skills_list" // 服务端推送的可用技能列表
-	HeartbeatChat    MessageType = "heartbeat_chat"    // 心跳消息（ping/pong）
+	HeartbeatChat    MessageType = "heartbeat_chat"     // 心跳消息（ping/pong）
 )
 
 type WSMessage struct {
@@ -39,29 +39,29 @@ type SystemChatData struct {
 
 // SystemThinkingData 定义了 Type 为 "system_thinking" 时，Data 字段的结构
 type SystemThinkingData struct {
-	Phase           string                 `json:"phase"`            // 当前处理阶段：skill_selection, llm_generation, formatting
-	SkillMatches    []SkillMatch           `json:"skill_matches"`    // 技能匹配结果列表
-	SelectedSkill   *SkillMatch            `json:"selected_skill"`   // 最终选中的技能
-	Thought         string                 `json:"thought"`          // 思考描述文本
-	Metadata        map[string]interface{} `json:"metadata,omitempty"` // 额外元数据（如延迟、token数）
+	Phase         string                 `json:"phase"`              // 当前处理阶段：skill_selection, llm_generation, formatting
+	SkillMatches  []SkillMatch           `json:"skill_matches"`      // 技能匹配结果列表
+	SelectedSkill *SkillMatch            `json:"selected_skill"`     // 最终选中的技能
+	Thought       string                 `json:"thought"`            // 思考描述文本
+	Metadata      map[string]interface{} `json:"metadata,omitempty"` // 额外元数据（如延迟、token数）
 }
 
 // SkillMatch 表示技能匹配结果
 type SkillMatch struct {
-	SkillIdentifier  string  `json:"skill_identifier"`  // 技能唯一标识符（S3 路径）
+	SkillIdentifier  string  `json:"skill_identifier"`   // 技能唯一标识符（S3 路径）
 	SkillDisplayName string  `json:"skill_display_name"` // 技能显示名称
-	MatchScore       float32 `json:"match_score"`       // 匹配分数
-	SkillCategory    string  `json:"skill_category"`    // 技能分类
+	MatchScore       float32 `json:"match_score"`        // 匹配分数
+	SkillCategory    string  `json:"skill_category"`     // 技能分类
 }
 
 // SystemResponseData 定义了 Type 为 "system_response" 时，Data 字段的结构
 type SystemResponseData struct {
-	Content         string                 `json:"content"`          // LLM 生成的响应内容
-	SkillUsed       *SkillMatch            `json:"skill_used"`       // 使用的技能（可选）
-	FinishReason    string                 `json:"finish_reason"`    // 响应结束原因：end_turn, max_tokens, error
-	TokensUsed      int                    `json:"tokens_used"`      // 消耗的 token 总数
-	LatencyMs       int64                  `json:"latency_ms"`       // 总延迟（毫秒）
-	Metadata        map[string]interface{} `json:"metadata,omitempty"` // 额外元数据
+	Content      string                 `json:"content"`            // LLM 生成的响应内容
+	SkillUsed    *SkillMatch            `json:"skill_used"`         // 使用的技能（可选）
+	FinishReason string                 `json:"finish_reason"`      // 响应结束原因：end_turn, max_tokens, error
+	TokensUsed   int                    `json:"tokens_used"`        // 消耗的 token 总数
+	LatencyMs    int64                  `json:"latency_ms"`         // 总延迟（毫秒）
+	Metadata     map[string]interface{} `json:"metadata,omitempty"` // 额外元数据
 }
 
 // SystemSkillsListData 定义了 Type 为 "system_skills_list" 时，Data 字段的结构。
@@ -75,11 +75,11 @@ type SystemSkillsListData struct {
 
 // SkillListItem 技能列表项（轻量级，不含完整内容）
 type SkillListItem struct {
-	SkillIdentifier  string   `json:"skill_identifier"`  // 技能唯一标识符，如 "/trade_analysis"
+	SkillIdentifier  string   `json:"skill_identifier"`   // 技能唯一标识符，如 "/trade_analysis"
 	SkillDisplayName string   `json:"skill_display_name"` // 技能显示名称
-	SkillDescription string   `json:"skill_description"` // 技能描述
-	SkillCategory    string   `json:"skill_category"`    // 技能分类
-	SearchKeywords   []string `json:"search_keywords"`   // 搜索关键词
+	SkillDescription string   `json:"skill_description"`  // 技能描述
+	SkillCategory    string   `json:"skill_category"`     // 技能分类
+	SearchKeywords   []string `json:"search_keywords"`    // 搜索关键词
 }
 
 // HeartbeatChatData 定义了 Type 为 "heartbeat_chat" 时，Data 字段的结构

@@ -849,7 +849,7 @@ func parseSkillDefinition(identifier string, content []byte) models.SkillDefinit
 		MarkdownBody: models.SkillsMarkdownBody{
 			Instructions: string(content),
 		},
-		SchemaVersion:       1,
+		SchemaVersion:        1,
 		LastUpdatedTimestamp: time.Now(),
 	}
 }

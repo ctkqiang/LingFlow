@@ -33,19 +33,19 @@ type SkillExecutionEventData struct {
 
 // LLMGenerationEventData 表示 LLM 生成事件的数据。
 type LLMGenerationEventData struct {
-	SkillIdentifier string        `json:"skill_identifier,omitempty"`
-	TokensUsed      int           `json:"tokens_used"`
-	LatencyMs       int64         `json:"latency_ms"`
-	FinishReason    string        `json:"finish_reason"`
-	ErrorMessage    string        `json:"error_message,omitempty"`
+	SkillIdentifier string `json:"skill_identifier,omitempty"`
+	TokensUsed      int    `json:"tokens_used"`
+	LatencyMs       int64  `json:"latency_ms"`
+	FinishReason    string `json:"finish_reason"`
+	ErrorMessage    string `json:"error_message,omitempty"`
 }
 
 // HeartbeatEventData 表示心跳事件的数据。
 type HeartbeatEventData struct {
 	ConnectionIdentifier string `json:"connection_identifier"`
-	Nonce               string `json:"nonce"`
-	LatencyMs           int64  `json:"latency_ms,omitempty"`
-	Action              string `json:"action"` // "ping" 或 "pong"
+	Nonce                string `json:"nonce"`
+	LatencyMs            int64  `json:"latency_ms,omitempty"`
+	Action               string `json:"action"` // "ping" 或 "pong"
 }
 
 // ChatStreamID 返回 chat aggregate 对应的事件流标识。
