@@ -1,0 +1,95 @@
+# 对于大多数项目，此工作流文件无需修改；你只需将其提交到你的仓库即可。
+#
+# 如果需要，你可以修改此文件以覆盖所分析的语言集合，
+# 或者提供自定义查询或构建逻辑。
+#
+# ******** 注意 ********
+# 我们已尝试自动检测你仓库中使用的编程语言。请检查下方定义的
+# `language` 矩阵，确认你拥有正确的 CodeQL 支持语言集合。
+#
+name: 'CodeQL Advanced'
+
+on:
+  push:
+    branches: ['main']
+  pull_request:
+    branches: ['main']
+  schedule:
+    - cron: '16 14 * * 2'
+
+jobs:
+  analyze:
+    name: 分析 (${{ matrix.language }})
+    # 运行器规格会影响 CodeQL 分析时间。了解更多请参阅：
+    #   - https://gh.io/recommended-hardware-resources-for-running-codeql
+    #   - https://gh.io/supported-runners-and-hardware-resources
+    #   - https://gh.io/using-larger-runners (仅限 GitHub.com)
+    # 建议使用更大规格的运行器或更高配置的机器以缩短分析时间。
+    runs-on: ${{ (matrix.language == 'swift' && 'macos-latest') || 'ubuntu-latest' }}
+    permissions:
+      # 所有工作流均需要此权限
+      security-events: write
+
+      # 拉取内部或私有 CodeQL 包时需要此权限
+      packages: read
+
+      # 仅在私有仓库的工作流中需要此权限
+      actions: read
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: go
+            build-mode: autobuild
+        # CodeQL 的 'language' 字段支持以下值：'actions'、'c-cpp'、'csharp'、'go'、'java-kotlin'、'javascript-typescript'、'python'、'ruby'、'rust'、'swift'
+        # 使用 `c-cpp` 分析 C、C++ 或两者兼有的代码
+        # 使用 'java-kotlin' 分析 Java、Kotlin 或两者兼有的代码
+        # 使用 'javascript-typescript' 分析 JavaScript、TypeScript 或两者兼有的代码
+        # 如需了解如何更改分析的语言或自定义构建模式，
+        # 请参阅 https://docs.github.com/en/code-security/code-scanning/creating-an-advanced-setup-for-code-scanning/customizing-your-advanced-setup-for-code-scanning
+        # 如果你正在分析编译型语言，可以修改该语言的 'build-mode' 来自定义代码库的分析方式，
+        # 请参阅 https://docs.github.com/en/code-security/code-scanning/creating-an-advanced-setup-for-code-scanning/codeql-code-scanning-for-compiled-languages
+    steps:
+      - name: 检出仓库代码
+        uses: actions/checkout@v4
+
+      # 在运行 `github/codeql-action/init` 之前，可在此处添加任何环境准备步骤。
+      # 包括安装编译器或运行时环境（如 `actions/setup-node` 等）。
+      # 通常仅在手动构建模式下才需要这些步骤。
+      # - name: 配置运行时环境（示例）
+      #   uses: actions/setup-example@v1
+
+      # 初始化 CodeQL 扫描工具。
+      - name: 初始化 CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          # 如需指定自定义查询，可在此处或在配置文件中设置。
+          # 默认情况下，此处列出的查询将覆盖配置文件中指定的查询。
+          # 在列表前加 "+" 前缀可同时使用此处和配置文件中的查询。
+
+          # 有关 CodeQL 查询包的更多详情，请参阅：https://docs.github.com/en/code-security/code-scanning/automatically-scanning-your-code-for-vulnerabilities-and-errors/configuring-code-scanning#using-queries-in-ql-packs
+          # queries: security-extended,security-and-quality
+
+      # 如果分析步骤因 "We were unable to automatically build your code" 而失败，
+      # 请修改上方矩阵，将该语言的构建模式设置为 "manual"，
+      # 然后修改此步骤以手动构建你的代码。
+      # 使用操作系统 Shell 运行的命令行程序。
+      # 参阅 https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idstepsrun
+      - name: 执行手动构建步骤
+        if: matrix.build-mode == 'manual'
+        shell: bash
+        run: |
+          echo '如果你对一种或多种语言使用了 "manual" 构建模式，' \
+            '请将此处替换为构建代码的命令，例如：'
+          echo '  make bootstrap'
+          echo '  make release'
+          exit 1
+
+      - name: 执行 CodeQL 分析
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: '/language:${{matrix.language}}'

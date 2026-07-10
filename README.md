@@ -768,26 +768,9 @@ keywords: 关键词 1, 关键词 2, 关键词 3, 关键词 4, 关键词 5
 
 LingFlow 使用基于关键词的混合检索策略：
 
-```
-用户消息 "检测系统安全漏洞"
-         │
-         ▼
-┌─────────────────────────────────┐
-│      SkillRegistry.Retrieve()    │
-│                                 │
-│  1. 文本归一化（小写化、分词）    │
-│  2. 关键词匹配评分               │
-│     - 技能 description 匹配      │
-│     - 技能 keywords 匹配         │
-│     - 技能 display_name 匹配     │
-│  3. 综合评分排序                 │
-│  4. 过滤低于阈值的结果 (≥ 0.3)   │
-│  5. 返回 Top-N (默认 5)         │
-└─────────────────────────────────┘
-         │
-         ▼
-   最佳匹配技能 /vulnerability_scanner (score: 0.95)
-```
+<img src="docs/images/skill_retrieval.png" alt="LingFlow 技能检索机制" width="100%" />
+
+> 也可通过 [skill_retrieval.puml](docs/images/skill_retrieval.puml) 文件查看源文件。
 
 ---
 

@@ -1,0 +1,64 @@
+@startuml
+!theme plain
+
+skinparam backgroundColor #FFFFFF
+skinparam activity {
+  BackgroundColor #FFFFFF
+  BorderColor #333333
+  ArrowColor #333333
+  StartColor #333333
+  EndColor #333333
+}
+skinparam note {
+  BackgroundColor #F5F5F5
+  BorderColor #CCCCCC
+}
+
+start
+
+:用户输入消息;
+:SkillRegistry.Retrieve();
+
+note right
+  **1. 文本归一化**
+  - 小写化
+  - 分词
+end note
+
+:关键词匹配评分;
+
+note right
+  **2. 多维度匹配**
+  - 技能 description 匹配
+  - 技能 keywords 匹配
+  - 技能 display_name 匹配
+end note
+
+:综合评分排序;
+
+note right
+  **3. 排序算法**
+  按匹配得分降序排列
+end note
+
+:过滤低于阈值的结果;
+
+note right
+  **4. 阈值过滤**
+  仅保留 score >= 0.3 的结果
+end note
+
+:返回 Top-N (默认 5);
+
+note right
+  **5. 结果截断**
+  返回前 N 个最佳匹配
+end note
+
+:最佳匹配技能
+/vulnerability_scanner
+(score: 0.95);
+
+stop
+
+@enduml
