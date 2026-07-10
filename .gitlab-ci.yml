@@ -42,6 +42,17 @@ variables:
 # 代码质量阶段
 # ============================================================================
 
+go:format:
+  stage: lint
+  image: golang:${GO_VERSION}
+  <<: *go_cache
+  script:
+    - echo "--- 检查 Go 代码格式 ---"
+    - test -z "$(go fmt -l .)" || (echo "以下文件未格式化：" && go fmt -l . && exit 1)
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+
 go:vet:
   stage: lint
   image: golang:${GO_VERSION}
@@ -53,6 +64,30 @@ go:vet:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == "main"
 
+# ============================================================================
+# 测试阶段
+# ============================================================================
+
+go:test:
+  stage: test
+  image: golang:${GO_VERSION}
+  <<: *go_cache
+  script:
+    - echo "--- 运行 Go 单元测试 ---"
+    - go test ./... -v -race -coverprofile=coverage.out
+    - go tool cover -func=coverage.out
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.out
+    paths:
+      - coverage.out
+    expire_in: 7 days
+  coverage: '/total:\s+\(statements\)\s+(\d+\.\d+)%/'
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
 
 # ============================================================================
 # 构建阶段
@@ -86,22 +121,6 @@ go:build:lambda:
   artifacts:
     paths:
       - build/lambda.zip
-    expire_in: 7 days
-  rules:
-    - if: $CI_COMMIT_BRANCH == "main"
-
-frontend:build:
-  stage: build
-  image: oven/bun:${BUN_VERSION}
-  <<: *bun_cache
-  script:
-    - echo "--- 构建前端静态资源 ---"
-    - cd demo
-    - bun install --frozen-lockfile
-    - bun run build
-  artifacts:
-    paths:
-      - demo/dist/
     expire_in: 7 days
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
