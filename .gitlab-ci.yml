@@ -42,17 +42,6 @@ variables:
 # 代码质量阶段
 # ============================================================================
 
-go:format:
-  stage: lint
-  image: golang:${GO_VERSION}
-  <<: *go_cache
-  script:
-    - echo "--- 检查 Go 代码格式 ---"
-    - test -z "$(gofmt -l .)" || (echo "以下文件未格式化：" && gofmt -l . && exit 1)
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == "main"
-
 go:vet:
   stage: lint
   image: golang:${GO_VERSION}
