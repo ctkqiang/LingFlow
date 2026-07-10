@@ -186,6 +186,7 @@ func (connectionManager *WebsokcetConnectionManager) AddConnection(
 
 		if currentIPCount >= connectionManager.maxConnectionsPerIP {
 			connectionManager.ipConnectionMutex.Unlock()
+
 			utilities.LogWarn(
 				"WebSocket连接管理",
 				"AddConnection",
@@ -196,6 +197,7 @@ func (connectionManager *WebsokcetConnectionManager) AddConnection(
 				fmt.Sprintf("current_ip_count=%d", currentIPCount),
 				fmt.Sprintf("rejected=true"),
 			)
+
 			utilities.LogNano("WebSocket连接管理", "AddConnection", utilities.WARN, "REJECTED",
 				time.Since(opStart),
 				fmt.Sprintf("reason=ip_limit_exceeded"),

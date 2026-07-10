@@ -40,3 +40,18 @@ build/
 
 # Debug
 __debug_bin*
+
+# Node.js / Demo
+demo/node_modules/
+demo/dist/
+demo/.next/
+demo/.nuxt/
+demo/.output/
+demo/bun.lockb
+demo/package-lock.json
+demo/yarn.lock
+demo/pnpm-lock.yaml
+
+# Logs
+*.log
+logs/
