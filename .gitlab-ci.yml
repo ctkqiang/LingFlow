@@ -1,118 +1,13 @@
-# ============================================================================
-# LingFlow - GitLab CI/CD 流水线配置
-# ============================================================================
-# 模块名称: ling_flow
-# 语言: Go 1.26.1 + Vue 3 (Bun + Vite)
-# 部署目标: AWS Lambda
-# ============================================================================
-
-stages:
-  - lint
-  - build
-  - security
-
-variables:
-  GO_VERSION: "1.26.1"
-  BUN_VERSION: "1.2"
-  GOPATH: "${CI_PROJECT_DIR}/.go"
-  GOFLAGS: "-v"
-  CGO_ENABLED: "0"
-
-# ----------------------------------------------------------------------------
-# 缓存配置：加速后续流水线执行
-# ----------------------------------------------------------------------------
-.go_cache: &go_cache
-  cache:
-    key: "${CI_COMMIT_REF_SLUG}-go"
-    paths:
-      - .go/pkg/mod/
-      - .go/bin/
-    policy: pull-push
-
-.bun_cache: &bun_cache
-  cache:
-    key: "${CI_COMMIT_REF_SLUG}-bun"
-    paths:
-      - demo/node_modules/
-    policy: pull-push
-
-# ============================================================================
-# 代码质量阶段
-# ============================================================================
-
-go:format:
-  stage: lint
-  image: golang:${GO_VERSION}
-  <<: *go_cache
-  script:
-    - echo "--- 检查 Go 代码格式 ---"
-    - test -z "$(go fmt -l .)" || (echo "以下文件未格式化：" && go fmt -l . && exit 1)
+# The Docker image that will be used to build your app
+image: web
+create-pages:
+  pages:
+    # The folder that contains the files to be exposed at the Page URL
+    publish: docs
   rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == "main"
-
-go:vet:
-  stage: lint
-  image: golang:${GO_VERSION}
-  <<: *go_cache
-  script:
-    - echo "--- 运行 Go 静态分析 ---"
-    - go vet ./...
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == "main"
-
-# ============================================================================
-# 构建阶段
-# ============================================================================
-
-go:build:
-  stage: build
-  image: golang:${GO_VERSION}
-  <<: *go_cache
-  script:
-    - echo "--- 构建 Go 后端二进制文件 ---"
-    - go build ${GOFLAGS} -ldflags "-s -w" -o build/LingFlow .
-    - ls -lh build/LingFlow
-  artifacts:
-    paths:
-      - build/LingFlow
-    expire_in: 7 days
-  rules:
-    - if: $CI_COMMIT_BRANCH == "main"
-
-go:build:lambda:
-  stage: build
-  image: golang:${GO_VERSION}
-  <<: *go_cache
-  script:
-    - echo "--- 构建 AWS Lambda 部署包 ---"
-    - GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build ${GOFLAGS} -ldflags "-s -w" -o build/bootstrap .
-    - apt-get update -qq && apt-get install -y -qq zip
-    - cd build && zip -j lambda.zip bootstrap
-    - ls -lh lambda.zip
-  artifacts:
-    paths:
-      - build/lambda.zip
-    expire_in: 7 days
-  rules:
-    - if: $CI_COMMIT_BRANCH == "main"
-
-# ============================================================================
-# 安全扫描阶段
-# ============================================================================
-# 仅使用 GitLab 免费版可用的安全扫描模板。
-# SAST 和 Dependency Scanning 需要 GitLab Ultimate 许可证，已排除。
-# Secret Detection 和 Semgrep SAST 在免费版可用。
-# ============================================================================
-
-secret_detection:
-  stage: security
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == "main"
-
-include:
-  - template: Security/Secret-Detection.gitlab-ci.yml
-
-
+    # This ensures that only pushes to the default branch will trigger
+    # a pages deploy
+    - if: $CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH
+  # Functions that should be executed before the build script is run
+  before_script:
+    - php -S 0.0.0.0:80
